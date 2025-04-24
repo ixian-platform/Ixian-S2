@@ -1,11 +1,11 @@
 ﻿using IXICore;
 using IXICore.Meta;
 using IXICore.Network;
+using IXICore.Network.Messages;
 using IXICore.Utils;
 using S2.Meta;
 using System;
 using System.IO;
-using System.Linq;
 using System.Numerics;
 
 namespace S2.Network
@@ -60,7 +60,6 @@ namespace S2.Network
                         }
                         break;
 
-
                     case ProtocolMessageCode.updatePresence:
                         // Parse the data and update entries in the presence list
                         PresenceList.updateFromBytes(data, 0);
@@ -94,14 +93,49 @@ namespace S2.Network
                         Node.tiv.receivedPIT2(data, endpoint);
                         break;
 
-                    default:
+                    case ProtocolMessageCode.rejected:
+                        handleRejected(data, endpoint);
                         break;
 
+                    default:
+                        break;
                 }
             }
             catch (Exception e)
             {
-                Logging.error(string.Format("Error parsing network message. Details: {0}", e.ToString()));
+                Logging.error("Error parsing network message. Details: {0}", e.ToString());
+            }
+        }
+
+        static void handleRejected(byte[] data, RemoteEndpoint endpoint)
+        {
+            try
+            {
+                Rejected rej = new Rejected(data);
+                switch (rej.code)
+                {
+                    case RejectedCode.TxInvalid:
+                    case RejectedCode.TxInsufficientFee:
+                    case RejectedCode.TxDust:
+                        Logging.error("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
+                        // remove tx from pending transactions
+                        // notify client who sent this transaction to us
+                        throw new NotImplementedException();
+                        break;
+
+                    case RejectedCode.TxDuplicate:
+                        Logging.warn("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
+                        // All good, do nothing
+                        throw new NotImplementedException();
+                        break;
+
+                    default:
+                        Logging.error("Received 'rejected' message with unknown code {0} {1}", rej.code, Crypto.hashToString(rej.data));
+                        break;
+                }
+            } catch (Exception e)
+            {
+                throw new Exception(string.Format("Exception occured while processing 'rejected' message with code {0} {1}", data[0], Crypto.hashToString(data)), e);
             }
         }
 
@@ -150,7 +184,7 @@ namespace S2.Network
 
                         }
 
-                        string address = NetworkClientManager.getMyAddress();
+                        string address = Node.networkClientManagerStatic.getMyAddress();
                         if (address != null)
                         {
                             if (IxianHandler.publicIP != address)
@@ -176,34 +210,6 @@ namespace S2.Network
             }
         }
 
-        static void handleGetPresence(byte[] data, RemoteEndpoint endpoint)
-        {
-            using (MemoryStream m = new MemoryStream(data))
-            {
-                using (BinaryReader reader = new BinaryReader(m))
-                {
-                    int walletLen = reader.ReadInt32();
-                    Address wallet = new Address(reader.ReadBytes(walletLen));
-                    Presence p = PresenceList.getPresenceByAddress(wallet);
-                    if (p != null)
-                    {
-                        lock (p)
-                        {
-                            byte[][] presence_chunks = p.getByteChunks();
-                            foreach (byte[] presence_chunk in presence_chunks)
-                            {
-                                endpoint.sendData(ProtocolMessageCode.updatePresence, presence_chunk, null);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // TODO blacklisting point
-                        Logging.warn(string.Format("Node has requested presence information about {0} that is not in our PL.", wallet.ToString()));
-                    }
-                }
-            }
-        }
         static void handleGetPresence2(byte[] data, RemoteEndpoint endpoint)
         {
             using (MemoryStream m = new MemoryStream(data))

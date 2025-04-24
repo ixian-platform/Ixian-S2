@@ -2,6 +2,7 @@
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.RegNames;
+using IXICore.Streaming;
 using IXICore.Utils;
 using S2.Network;
 using System;
@@ -44,6 +45,9 @@ namespace S2.Meta
         private static byte[] networkBlockChecksum = null;
         private static int networkBlockVersion = 0;
         private bool generatedNewWallet = false;
+
+        public static NetworkClientManagerStatic networkClientManagerStatic = null;
+        public static NetworkClientManagerRandomized networkClientManagerRandomized = null;
 
         public Node()
         {
@@ -244,7 +248,13 @@ namespace S2.Meta
             NetworkServer.beginNetworkOperations();
 
             // Start the network client manager
+            networkClientManagerRandomized = new NetworkClientManagerRandomized(CoreConfig.simultaneousConnectedNeighbors);
+
+            NetworkClientManager.init(networkClientManagerRandomized);
             NetworkClientManager.start(2);
+
+            networkClientManagerStatic = new NetworkClientManagerStatic(CoreConfig.simultaneousConnectedNeighbors);
+            networkClientManagerStatic.start(0);
 
             // Start the keepalive thread
             PresenceList.startKeepAlive();
@@ -334,6 +344,7 @@ namespace S2.Meta
             }
 
             // Stop all network clients
+            networkClientManagerStatic.stop();
             NetworkClientManager.stop();
 
             // Stop the network server
@@ -438,11 +449,11 @@ namespace S2.Meta
             return tiv.getLastBlockHeader().version;
         }
 
-        public override bool addTransaction(Transaction tx, bool force_broadcast)
+        public override bool addTransaction(Transaction tx, List<Address> relayNodeAddresses, bool force_broadcast)
         {
             // TODO Send to peer if directly connectable
             CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
-            PendingTransactions.addPendingLocalTransaction(tx);
+            PendingTransactions.addPendingLocalTransaction(tx, null);
             return true;
         }
 
@@ -607,6 +618,41 @@ namespace S2.Meta
         }
 
         public override RegisteredNameRecord getRegName(byte[] name, bool useAbsoluteId)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override bool receivedNewTransaction(Transaction tx)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override FriendMessage addMessageWithType(byte[] id, FriendMessageType type, Address wallet_address, int channel, string message, bool local_sender = false, Address sender_address = null, long timestamp = 0, bool fire_local_notification = true, int payable_data_len = 0)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override byte[] resizeImage(byte[] imageData, int width, int height, int quality)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void resubscribeEvents()
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void receiveStreamData(byte[] data, RemoteEndpoint endpoint, bool fireLocalNotification)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override long getTimeSinceLastBlock()
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void triggerSignerPowSolutionFound()
         {
             throw new NotImplementedException();
         }

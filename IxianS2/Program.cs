@@ -248,7 +248,11 @@ namespace S2
             {
                 try
                 {
-                    if (Console.KeyAvailable)
+                    if (Node.update() == false)
+                    {
+                        IxianHandler.forceShutdown = true;
+                    }
+                    if (!Console.IsInputRedirected && Console.KeyAvailable)
                     {
                         ConsoleKeyInfo key = Console.ReadKey();
 
@@ -267,10 +271,6 @@ namespace S2
                             IxianHandler.forceShutdown = true;
                         }
 
-                    }
-                    if (Node.update() == false)
-                    {
-                        IxianHandler.forceShutdown = true;
                     }
                 }
                 catch (Exception e)
