@@ -76,6 +76,10 @@ namespace S2.Meta
         /// </summary>
         public static string blockNotifyCommand = "";
 
+
+        public static int maxRelaySectorNodesToRequest = 20;
+        public static int maxRelaySectorNodesToConnectTo = 10;
+
         private Config()
         {
 

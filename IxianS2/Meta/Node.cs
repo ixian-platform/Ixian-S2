@@ -77,13 +77,21 @@ namespace S2.Meta
                 return;
             }
 
-            // Setup the stats console
-            statsConsoleScreen = new StatsConsoleScreen();
-
             PeerStorage.init("");
 
             // Init TIV
             tiv = new TransactionInclusion();
+
+            networkClientManagerRandomized = new NetworkClientManagerRandomized(CoreConfig.simultaneousConnectedNeighbors);
+
+            NetworkClientManager.init(networkClientManagerRandomized);
+
+            networkClientManagerStatic = new NetworkClientManagerStatic(CoreConfig.simultaneousConnectedNeighbors);
+
+            RelaySectors.init(CoreConfig.relaySectorLevels, null);
+
+            // Setup the stats console
+            statsConsoleScreen = new StatsConsoleScreen();
         }
 
         private bool initWallet()
@@ -248,12 +256,7 @@ namespace S2.Meta
             NetworkServer.beginNetworkOperations();
 
             // Start the network client manager
-            networkClientManagerRandomized = new NetworkClientManagerRandomized(CoreConfig.simultaneousConnectedNeighbors);
-
-            NetworkClientManager.init(networkClientManagerRandomized);
-            NetworkClientManager.start(2);
-
-            networkClientManagerStatic = new NetworkClientManagerStatic(CoreConfig.simultaneousConnectedNeighbors);
+            NetworkClientManager.start(1);
             networkClientManagerStatic.start(0);
 
             // Start the keepalive thread
@@ -286,11 +289,24 @@ namespace S2.Meta
                 {
                     using (BinaryWriter writer = new BinaryWriter(mw))
                     {
-                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressWithChecksum.Length);
-                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressWithChecksum);
+                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
+                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
                         NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getBalance2, mw.ToArray(), null);
                     }
                 }
+
+                using (MemoryStream mw = new MemoryStream())
+                {
+                    using (BinaryWriter writer = new BinaryWriter(mw))
+                    {
+                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
+                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
+                        writer.WriteIxiVarInt(Config.maxRelaySectorNodesToRequest);
+                        NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getSectorNodes, mw.ToArray(), null);
+                    }
+                }
+
+                ProtocolMessage.clearOldData();
             }
 
             if (IxianHandler.status != NodeStatus.warmUp)

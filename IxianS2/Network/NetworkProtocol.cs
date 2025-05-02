@@ -5,13 +5,53 @@ using IXICore.Network.Messages;
 using IXICore.Utils;
 using S2.Meta;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 
 namespace S2.Network
 {
     public class ProtocolMessage
     {
+        static Dictionary<ProtocolMessageCode, Dictionary<byte[], (long timestamp, RemoteEndpoint endpoint)>> pendingRequests = new() { { ProtocolMessageCode.getBalance2, new(new ByteArrayComparer()) },
+                                                                                                                                        { ProtocolMessageCode.getSectorNodes, new(new ByteArrayComparer()) }};
+
+        static Dictionary<byte[], long> cachedSectors = new();
+
+        public static void clearOldData()
+        {
+            clearOldCachedSectors();
+            clearOldPendingRequests();
+        }
+
+        public static void clearOldPendingRequests()
+        {
+            foreach (var prType in pendingRequests)
+            {
+                Dictionary<byte[], (long timestamp, RemoteEndpoint endpoint)> tmpPendingRequests = new(prType.Value, new ByteArrayComparer());
+                foreach (var pending in tmpPendingRequests)
+                {
+                    if (Clock.getTimestamp() - pending.Value.timestamp > 30)
+                    {
+                        prType.Value.Remove(pending.Key);
+                    }
+                }
+            }
+        }
+
+        public static void clearOldCachedSectors()
+        {
+            Dictionary<byte[], long> tmpCachedSectors = new(cachedSectors, new ByteArrayComparer());
+            foreach (var cached in tmpCachedSectors)
+            {
+                if (Clock.getTimestamp() - cached.Value > 30)
+                {
+                    cachedSectors.Remove(cached.Key);
+                }
+            }
+        }
+
         // Unified protocol message parsing
         public static void parseProtocolMessage(ProtocolMessageCode code, byte[] data, RemoteEndpoint endpoint)
         {
@@ -69,7 +109,8 @@ namespace S2.Network
                         Address address = null;
                         long last_seen = 0;
                         byte[] device_id = null;
-                        bool updated = PresenceList.receiveKeepAlive(data, out address, out last_seen, out device_id, endpoint);
+                        char node_type;
+                        bool updated = PresenceList.receiveKeepAlive(data, out address, out last_seen, out device_id, out node_type, endpoint);
                         break;
 
                     case ProtocolMessageCode.getPresence2:
@@ -97,13 +138,150 @@ namespace S2.Network
                         handleRejected(data, endpoint);
                         break;
 
+                    //case ProtocolMessageCode.inventory2:
+                    //    handleInventory2(data, endpoint);
+                    //    break;
+
+                    //case ProtocolMessageCode.getStreamingNode:
+                    //    handleGetStreamingNode(data, endpoint);
+                    //    break;
+
+                    case ProtocolMessageCode.getSectorNodes:
+                        handleGetSectorNodes(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.sectorNodes:
+                        handleSectorNodes(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.getBalance2:
+                        handleGetBalance(data, endpoint);
+                        break;
+
                     default:
+                        Logging.warn("Unknown protocol message: {0}, from {1} ({2})", code, endpoint.getFullAddress(), endpoint.serverWalletAddress);
                         break;
                 }
             }
             catch (Exception e)
             {
                 Logging.error("Error parsing network message. Details: {0}", e.ToString());
+            }
+        }
+
+        public static void handleGetBalance(byte[] data, RemoteEndpoint endpoint)
+        {
+             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBalance2, data, null);
+        }
+
+        public static void handleGetSectorNodes(byte[] data, RemoteEndpoint endpoint)
+        {
+            int offset = 0;
+            var addressWithOffset = data.ReadIxiBytes(offset);
+            offset += addressWithOffset.bytesRead;
+
+            var maxRelayCountWithOffset = data.GetIxiVarUInt(offset);
+            offset += maxRelayCountWithOffset.bytesRead;
+            int maxRelayCount = (int)maxRelayCountWithOffset.num;
+
+            if (maxRelayCount > 20)
+            {
+                maxRelayCount = 20;
+            }
+
+            if (cachedSectors.ContainsKey(addressWithOffset.bytes))
+            {
+                var relayList = RelaySectors.Instance.getSectorNodes(addressWithOffset.bytes, maxRelayCount);
+
+                sendSectorNodes(addressWithOffset.bytes, relayList, endpoint);
+            }
+            else
+            {
+                NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getSectorNodes, data, null);
+            }
+        }
+
+        private static void sendSectorNodes(byte[] prefix, List<Address> relayList, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream())
+            {
+                using (BinaryWriter writer = new BinaryWriter(m))
+                {
+                    writer.WriteIxiVarInt(prefix.Length);
+                    writer.Write(prefix);
+
+                    writer.WriteIxiVarInt(relayList.Count);
+
+                    foreach (var relay in relayList)
+                    {
+                        var p = PresenceList.getPresenceByAddress(relay);
+                        if (p == null)
+                        {
+                            continue;
+                        }
+
+                        var pBytes = p.getBytes();
+                        writer.WriteIxiVarInt(pBytes.Length);
+                        writer.Write(pBytes);
+                    }
+                }
+
+                endpoint.sendData(ProtocolMessageCode.sectorNodes, m.ToArray(), null, 0, MessagePriority.high);
+            }
+        }
+
+        static void handleSectorNodes(byte[] data, RemoteEndpoint endpoint)
+        {
+            int offset = 0;
+
+            var prefixAndOffset = data.ReadIxiBytes(offset);
+            offset += prefixAndOffset.bytesRead;
+            byte[] prefix = prefixAndOffset.bytes;
+
+            var nodeCountAndOffset = data.GetIxiVarUInt(offset);
+            offset += nodeCountAndOffset.bytesRead;
+            int nodeCount = (int)nodeCountAndOffset.num;
+
+            for (int i = 0; i < nodeCount; i++)
+            {
+                var kaBytesAndOffset = data.ReadIxiBytes(offset);
+                offset += kaBytesAndOffset.bytesRead;
+
+                Presence p = PresenceList.updateFromBytes(kaBytesAndOffset.bytes, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight() + 1, IxianHandler.getLastBlockVersion(), Clock.getNetworkTimestamp()));
+                if (p != null)
+                {
+                    RelaySectors.Instance.addRelayNode(p.wallet);
+                }
+            }
+
+            cachedSectors.AddOrReplace(prefix, Clock.getTimestamp());
+
+            if (IxianHandler.isMyAddress(new Address(prefix)))
+            {
+                List<Peer> peers = new();
+                var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToConnectTo);
+                foreach (var relay in relays)
+                {
+                    var p = PresenceList.getPresenceByAddress(relay);
+                    if (p == null)
+                    {
+                        continue;
+                    }
+                    var pa = p.addresses.First();
+                    peers.Add(new(pa.address, relay, pa.lastSeenTime, 0, 0, 0));
+                }
+                Node.networkClientManagerStatic.setClientsToConnectTo(peers);
+            } else
+            {
+                // Forward sector nodes to client
+                (long timestamp, RemoteEndpoint endpoint) pendingRequest;
+                pendingRequests[ProtocolMessageCode.getSectorNodes].TryGetValue(prefix, out pendingRequest);
+                if (pendingRequest != default)
+                {
+                    var relays = RelaySectors.Instance.getSectorNodes(prefix, nodeCount);
+                    sendSectorNodes(prefix, relays, pendingRequest.endpoint);
+                    pendingRequests[ProtocolMessageCode.getSectorNodes].Remove(prefix);
+                }
             }
         }
 
@@ -159,7 +337,7 @@ namespace S2.Network
                     if (CoreProtocolMessage.processHelloMessageV6(endpoint, reader))
                     {
                         char node_type = endpoint.presenceAddress.type;
-                        if (node_type != 'M' && node_type != 'H')
+                        if (node_type != 'M' && node_type != 'H' && node_type != 'R')
                         {
                             CoreProtocolMessage.sendBye(endpoint, ProtocolByeCode.expectingMaster, string.Format("Expecting master node."), "", true);
                             return;
@@ -267,6 +445,17 @@ namespace S2.Network
                             Node.balance.blockChecksum = block_checksum;
                             Node.balance.lastUpdate = Clock.getTimestamp();
                             Node.balance.verified = false;
+                        }
+                    } else
+                    {
+                        // Forward balance to client
+                        (long timestamp, RemoteEndpoint endpoint) pendingRequest;
+                        var addressBytes = address.addressNoChecksum;
+                        pendingRequests[ProtocolMessageCode.getBalance2].TryGetValue(addressBytes, out pendingRequest);
+                        if (pendingRequest != default)
+                        {
+                            pendingRequests[ProtocolMessageCode.getBalance2].Remove(addressBytes);
+                            endpoint.sendData(ProtocolMessageCode.balance2, data, null, 0, MessagePriority.high);
                         }
                     }
                 }
