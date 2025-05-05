@@ -1,7 +1,9 @@
 ﻿using IXICore;
+using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Network.Messages;
+using IXICore.RegNames;
 using IXICore.Utils;
 using S2.Meta;
 using System;
@@ -9,15 +11,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using static IXICore.Transaction;
 
 namespace S2.Network
 {
     public class ProtocolMessage
     {
-        static Dictionary<ProtocolMessageCode, Dictionary<byte[], (long timestamp, RemoteEndpoint endpoint)>> pendingRequests = new() { { ProtocolMessageCode.getBalance2, new(new ByteArrayComparer()) },
-                                                                                                                                        { ProtocolMessageCode.getSectorNodes, new(new ByteArrayComparer()) }};
+        static Dictionary<ProtocolMessageCode, Dictionary<byte[], (long timestamp, List<RemoteEndpoint> endpoints)>> pendingRequests = new() { { ProtocolMessageCode.getBalance2, new(new ByteArrayComparer()) },
+                                                                                                                                               { ProtocolMessageCode.getSectorNodes, new(new ByteArrayComparer()) }};
 
-        static Dictionary<byte[], long> cachedSectors = new();
+        static Dictionary<byte[], long> cachedSectors = new(new ByteArrayComparer());
+        static Dictionary<byte[], (long timestamp, List<RegisteredNameDataRecord> nameRecords)> cachedNames = new(new ByteArrayComparer());
 
         public static void clearOldData()
         {
@@ -29,7 +33,7 @@ namespace S2.Network
         {
             foreach (var prType in pendingRequests)
             {
-                Dictionary<byte[], (long timestamp, RemoteEndpoint endpoint)> tmpPendingRequests = new(prType.Value, new ByteArrayComparer());
+                Dictionary<byte[], (long timestamp, List<RemoteEndpoint> endpoint)> tmpPendingRequests = new(prType.Value, new ByteArrayComparer());
                 foreach (var pending in tmpPendingRequests)
                 {
                     if (Clock.getTimestamp() - pending.Value.timestamp > 30)
@@ -88,29 +92,39 @@ namespace S2.Network
                         {
                             Transaction tx = new Transaction(data, true, true);
 
-                            if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                            if (endpoint.presenceAddress.type == 'C')
                             {
-                                PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
+                                ToEntry value;
+                                if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
+                                    && value.amount >= tx.fee)
+                                {
+                                    IxianHandler.addTransaction(tx, null, true);
+                                } else
+                                {
+                                    endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TxInsufficientFee, tx.id).getBytes());
+                                }
                             }
+                            else
+                            {
+                                if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                                {
+                                    PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
+                                }
 
-                            Node.tiv.receivedNewTransaction(tx);
-                            Logging.info("Received new transaction {0}", tx.id);
+                                Node.tiv.receivedNewTransaction(tx);
+                                Logging.info("Received new transaction {0}", tx.id);
 
-                            Node.addTransactionToActivityStorage(tx);
+                                Node.addTransactionToActivityStorage(tx);
+                            }
                         }
                         break;
 
                     case ProtocolMessageCode.updatePresence:
-                        // Parse the data and update entries in the presence list
-                        PresenceList.updateFromBytes(data, 0);
+                        handlePresence(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.keepAlivePresence:
-                        Address address = null;
-                        long last_seen = 0;
-                        byte[] device_id = null;
-                        char node_type;
-                        bool updated = PresenceList.receiveKeepAlive(data, out address, out last_seen, out device_id, out node_type, endpoint);
+                        handleKeepAlivePresence(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.getPresence2:
@@ -138,9 +152,9 @@ namespace S2.Network
                         handleRejected(data, endpoint);
                         break;
 
-                    //case ProtocolMessageCode.inventory2:
-                    //    handleInventory2(data, endpoint);
-                    //    break;
+                    case ProtocolMessageCode.inventory2:
+                        handleInventory2(data, endpoint);
+                        break;
 
                     //case ProtocolMessageCode.getStreamingNode:
                     //    handleGetStreamingNode(data, endpoint);
@@ -158,6 +172,14 @@ namespace S2.Network
                         handleGetBalance(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.getNameRecord:
+                        handleGetNameRecord(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.nameRecord:
+                        handleNameRecord(data, endpoint);
+                        break;
+
                     default:
                         Logging.warn("Unknown protocol message: {0}, from {1} ({2})", code, endpoint.getFullAddress(), endpoint.serverWalletAddress);
                         break;
@@ -169,9 +191,166 @@ namespace S2.Network
             }
         }
 
+        private static void handlePresence(byte[] data, RemoteEndpoint endpoint)
+        {
+            // Parse the data and update entries in the presence list
+            PresenceList.updateFromBytes(data, 0);
+        }
+
+        private static void sendKeepAlivePresenceToNeighbourSectorNodes(InventoryItemKeepAlive iika, RemoteEndpoint endpoint)
+        {
+            var sectorNodes = RelaySectors.Instance.getSectorNodes(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum, Config.maxRelaySectorNodesToConnectTo);
+            var thisNodeIndex = sectorNodes.FindIndex(x => x.addressNoChecksum.SequenceEqual(iika.address.addressNoChecksum));
+
+            if (endpoint.presenceAddress.type != 'C')
+            {
+                return;
+            }
+
+            if (thisNodeIndex == -1)
+            {
+                return;
+            }
+
+            int startIndex = 0;
+            if (thisNodeIndex >= 2)
+            {
+                startIndex = thisNodeIndex - 2;
+            }
+
+            int nodeCount = sectorNodes.Count;
+            if (nodeCount - thisNodeIndex > 2)
+            {
+                nodeCount = thisNodeIndex + 2;
+            }
+
+            for (int i = startIndex; i < nodeCount; i++)
+            {
+                if (i == thisNodeIndex)
+                {
+                    continue;
+                }
+
+                var client = NetworkClientManager.getClient(sectorNodes[i]);
+                if (client != null)
+                {
+                    client.addInventoryItem(iika);
+                }
+                else
+                {
+                    client = NetworkServer.getClient(sectorNodes[i]);
+                    if (client != null)
+                    {
+                        client.addInventoryItem(iika);
+                    }
+                }
+            }
+        }
+
+        private static void handleKeepAlivePresence(byte[] data, RemoteEndpoint endpoint)
+        {
+            byte[] hash = CryptoManager.lib.sha3_512sqTrunc(data);
+
+            InventoryCache.Instance.setProcessedFlag(InventoryItemTypes.keepAlive, hash, true);
+
+            Address address = null;
+            long last_seen = 0;
+            byte[] device_id = null;
+            char node_type;
+            bool updated = PresenceList.receiveKeepAlive(data, out address, out last_seen, out device_id, out node_type, endpoint);
+            if (updated)
+            {
+                var iika = new InventoryItemKeepAlive(hash, last_seen, address, device_id);
+                if (node_type == 'R')
+                {
+                    Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
+                }
+                else if (node_type == 'C')
+                {
+                    sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
+                }
+            }
+        }
+
+        private static void addPendingRequest(ProtocolMessageCode code, byte[] key, RemoteEndpoint endpoint)
+        {
+            (long timestamp, List<RemoteEndpoint> endpoints) pendingRequest;
+            if (pendingRequests[code].TryGetValue(key, out pendingRequest))
+            {
+                if (!pendingRequest.endpoints.Contains(endpoint))
+                {
+                    pendingRequest.endpoints.Add(endpoint);
+                    pendingRequest.timestamp = Clock.getTimestamp();
+                    pendingRequests[code].AddOrReplace(key, pendingRequest);
+                }
+            }
+            else
+            {
+                pendingRequests[code].AddOrReplace(key, (Clock.getTimestamp(), new() { endpoint }));
+            }
+        }
+
+        private static (long timestamp, List<RemoteEndpoint> endpoints) getAndRemovePendingRequest(ProtocolMessageCode code, byte[] key)
+        {
+            (long timestamp, List<RemoteEndpoint> endpoints) pendingRequest;
+            pendingRequests[code].TryGetValue(key, out pendingRequest);
+            if (pendingRequest != default)
+            {
+                pendingRequests[code].Remove(key);
+            }
+            return pendingRequest;
+        }
+
+        static void handleNameRecord(byte[] data, RemoteEndpoint endpoint)
+        {
+            int offset = 0;
+
+            var nameAndOffset = data.ReadIxiBytes(offset);
+            offset += nameAndOffset.bytesRead;
+            byte[] name = nameAndOffset.bytes;
+
+            var recordCountAndOffset = data.GetIxiVarUInt(offset);
+            offset += recordCountAndOffset.bytesRead;
+            int recordCount = (int)recordCountAndOffset.num;
+
+            for (int i = 0; i < recordCount; i++)
+            {
+                var recordAndOffset = data.ReadIxiBytes(offset);
+                offset += recordAndOffset.bytesRead;
+            }
+
+            // Forward name records to client
+            var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getNameRecord, name);
+            if (pendingRequest != default)
+            {
+                foreach (var prEndpoint in pendingRequest.endpoints)
+                {
+                    prEndpoint.sendData(ProtocolMessageCode.nameRecord, data, null, 0, MessagePriority.high);
+                }
+            }
+        }
+
+        public static void handleGetNameRecord(byte[] data, RemoteEndpoint endpoint)
+        {
+            int offset = 0;
+            var name = data.ReadIxiBytes(offset);
+            offset += name.bytesRead;
+
+            (long timestamp, List<RegisteredNameDataRecord> nameRecords) cachedName;
+            if (cachedNames.TryGetValue(name.bytes, out cachedName))
+            {
+                CoreProtocolMessage.sendRegisteredNameRecord(endpoint, name.bytes, cachedName.nameRecords);
+            }
+            else
+            {
+                addPendingRequest(ProtocolMessageCode.getNameRecord, name.bytes, endpoint);
+                NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getNameRecord, data, null);
+            }
+        }
+
         public static void handleGetBalance(byte[] data, RemoteEndpoint endpoint)
         {
-             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBalance2, data, null);
+            NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBalance2, data, null);
         }
 
         public static void handleGetSectorNodes(byte[] data, RemoteEndpoint endpoint)
@@ -193,40 +372,12 @@ namespace S2.Network
             {
                 var relayList = RelaySectors.Instance.getSectorNodes(addressWithOffset.bytes, maxRelayCount);
 
-                sendSectorNodes(addressWithOffset.bytes, relayList, endpoint);
+                CoreProtocolMessage.sendSectorNodes(addressWithOffset.bytes, relayList, endpoint);
             }
             else
             {
+                addPendingRequest(ProtocolMessageCode.getSectorNodes, addressWithOffset.bytes, endpoint);
                 NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getSectorNodes, data, null);
-            }
-        }
-
-        private static void sendSectorNodes(byte[] prefix, List<Address> relayList, RemoteEndpoint endpoint)
-        {
-            using (MemoryStream m = new MemoryStream())
-            {
-                using (BinaryWriter writer = new BinaryWriter(m))
-                {
-                    writer.WriteIxiVarInt(prefix.Length);
-                    writer.Write(prefix);
-
-                    writer.WriteIxiVarInt(relayList.Count);
-
-                    foreach (var relay in relayList)
-                    {
-                        var p = PresenceList.getPresenceByAddress(relay);
-                        if (p == null)
-                        {
-                            continue;
-                        }
-
-                        var pBytes = p.getBytes();
-                        writer.WriteIxiVarInt(pBytes.Length);
-                        writer.Write(pBytes);
-                    }
-                }
-
-                endpoint.sendData(ProtocolMessageCode.sectorNodes, m.ToArray(), null, 0, MessagePriority.high);
             }
         }
 
@@ -271,16 +422,18 @@ namespace S2.Network
                     peers.Add(new(pa.address, relay, pa.lastSeenTime, 0, 0, 0));
                 }
                 Node.networkClientManagerStatic.setClientsToConnectTo(peers);
-            } else
+            }
+            else
             {
                 // Forward sector nodes to client
-                (long timestamp, RemoteEndpoint endpoint) pendingRequest;
-                pendingRequests[ProtocolMessageCode.getSectorNodes].TryGetValue(prefix, out pendingRequest);
+                var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getSectorNodes, prefix);
                 if (pendingRequest != default)
                 {
                     var relays = RelaySectors.Instance.getSectorNodes(prefix, nodeCount);
-                    sendSectorNodes(prefix, relays, pendingRequest.endpoint);
-                    pendingRequests[ProtocolMessageCode.getSectorNodes].Remove(prefix);
+                    foreach (var prEndpoint in pendingRequest.endpoints)
+                    {
+                        CoreProtocolMessage.sendSectorNodes(prefix, relays, prEndpoint);
+                    }
                 }
             }
         }
@@ -311,7 +464,8 @@ namespace S2.Network
                         Logging.error("Received 'rejected' message with unknown code {0} {1}", rej.code, Crypto.hashToString(rej.data));
                         break;
                 }
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
                 throw new Exception(string.Format("Exception occured while processing 'rejected' message with code {0} {1}", data[0], Crypto.hashToString(data)), e);
             }
@@ -375,8 +529,6 @@ namespace S2.Network
                         // Process the hello data
                         endpoint.helloReceived = true;
                         NetworkClientManager.recalculateLocalTimeDifference();
-
-                        Node.setNetworkBlock(last_block_num, block_checksum, block_version);
 
                         // Get random presences
                         endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'M' });
@@ -446,19 +598,124 @@ namespace S2.Network
                             Node.balance.lastUpdate = Clock.getTimestamp();
                             Node.balance.verified = false;
                         }
-                    } else
+                    }
+                    else
                     {
                         // Forward balance to client
-                        (long timestamp, RemoteEndpoint endpoint) pendingRequest;
                         var addressBytes = address.addressNoChecksum;
-                        pendingRequests[ProtocolMessageCode.getBalance2].TryGetValue(addressBytes, out pendingRequest);
+                        var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getBalance2, addressBytes);
                         if (pendingRequest != default)
                         {
-                            pendingRequests[ProtocolMessageCode.getBalance2].Remove(addressBytes);
-                            endpoint.sendData(ProtocolMessageCode.balance2, data, null, 0, MessagePriority.high);
+                            foreach (var prEndpoint in pendingRequest.endpoints)
+                            {
+                                prEndpoint.sendData(ProtocolMessageCode.balance2, data, null, 0, MessagePriority.high);
+                            }
                         }
                     }
                 }
+            }
+        }
+
+
+
+        static void handleInventory2(byte[] data, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream(data))
+            {
+                using (BinaryReader reader = new BinaryReader(m))
+                {
+                    ulong item_count = reader.ReadIxiVarUInt();
+                    if (item_count > (ulong)CoreConfig.maxInventoryItems)
+                    {
+                        Logging.warn("Received {0} inventory items, max items is {1}", item_count, CoreConfig.maxInventoryItems);
+                        item_count = (ulong)CoreConfig.maxInventoryItems;
+                    }
+
+                    ulong last_accepted_block_height = IxianHandler.getLastBlockHeight();
+
+                    ulong network_block_height = IxianHandler.getHighestKnownNetworkBlockHeight();
+
+                    Dictionary<ulong, List<InventoryItemSignature>> sig_lists = new Dictionary<ulong, List<InventoryItemSignature>>();
+                    List<InventoryItemKeepAlive> ka_list = new List<InventoryItemKeepAlive>();
+                    List<byte[]> tx_list = new List<byte[]>();
+                    for (ulong i = 0; i < item_count; i++)
+                    {
+                        ulong len = reader.ReadIxiVarUInt();
+                        byte[] item_bytes = reader.ReadBytes((int)len);
+                        InventoryItem item = InventoryCache.decodeInventoryItem(item_bytes);
+                        if (item.type == InventoryItemTypes.transaction)
+                        {
+                            PendingTransactions.increaseReceivedCount(item.hash, endpoint.presence.wallet);
+                        }
+                        PendingInventoryItem pii = InventoryCache.Instance.add(item, endpoint);
+
+                        // First update endpoint blockheights
+                        switch (item.type)
+                        {
+                            case InventoryItemTypes.block:
+                                var iib = ((InventoryItemBlock)item);
+                                if (iib.blockNum > endpoint.blockHeight)
+                                {
+                                    endpoint.blockHeight = iib.blockNum;
+                                }
+                                break;
+                        }
+
+                        if (!pii.processed && pii.lastRequested == 0)
+                        {
+                            // first time we're seeing this inventory item
+                            switch (item.type)
+                            {
+                                case InventoryItemTypes.keepAlive:
+                                    ka_list.Add((InventoryItemKeepAlive)item);
+                                    pii.lastRequested = Clock.getTimestamp();
+                                    break;
+
+                                case InventoryItemTypes.transaction:
+                                    tx_list.Add(item.hash);
+                                    pii.lastRequested = Clock.getTimestamp();
+                                    break;
+
+                                case InventoryItemTypes.block:
+                                    var iib = ((InventoryItemBlock)item);
+                                    if (iib.blockNum <= last_accepted_block_height)
+                                    {
+                                        InventoryCache.Instance.setProcessedFlag(iib.type, iib.hash, true);
+                                        continue;
+                                    }
+
+                                    var netBlockNum = CoreProtocolMessage.determineHighestNetworkBlockNum();
+                                    if (iib.blockNum > netBlockNum)
+                                    {
+                                        continue;
+                                    }
+
+                                    requestNextBlock(iib.blockNum, iib.hash, endpoint);
+                                    break;
+
+                                default:
+                                    Logging.warn("Unhandled inventory item {0}", item.type);
+                                    break;
+                            }
+                        }
+                    }
+
+                    CoreProtocolMessage.broadcastGetKeepAlives(ka_list, endpoint);
+
+                    CoreProtocolMessage.broadcastGetTransactions(tx_list, 0, endpoint);
+                }
+            }
+        }
+
+        static void requestNextBlock(ulong blockNum, byte[] blockHash, RemoteEndpoint endpoint)
+        {
+            InventoryItemBlock iib = new InventoryItemBlock(blockHash, blockNum);
+            PendingInventoryItem pii = InventoryCache.Instance.add(iib, endpoint);
+            if (!pii.processed
+                && pii.lastRequested == 0)
+            {
+                pii.lastRequested = Clock.getTimestamp();
+                InventoryCache.Instance.processInventoryItem(pii);
             }
         }
     }

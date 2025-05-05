@@ -216,7 +216,7 @@ namespace S2.Meta
             UpdateVerify.start();
 
             // Generate presence list
-            PresenceList.init(IxianHandler.publicIP, Config.serverPort, 'R');
+            PresenceList.init(IxianHandler.publicIP, Config.serverPort, 'R', CoreConfig.relayKeepAliveInterval);
 
             // Start the network queue
             NetworkQueue.start();
@@ -403,14 +403,6 @@ namespace S2.Meta
             return true;
         }
 
-
-        static public void setNetworkBlock(ulong block_height, byte[] block_checksum, int block_version)
-        {
-            networkBlockHeight = block_height;
-            networkBlockChecksum = block_checksum;
-            networkBlockVersion = block_version;
-        }
-
         public override void receivedTransactionInclusionVerificationResponse(byte[] txid, bool verified)
         {
             // TODO implement error
@@ -435,7 +427,6 @@ namespace S2.Meta
             if (block_header.blockNum >= networkBlockHeight)
             {
                 IxianHandler.status = NodeStatus.ready;
-                setNetworkBlock(block_header.blockNum, block_header.blockChecksum, block_header.version);
             }
             processPendingTransactions();
         }
@@ -451,7 +442,14 @@ namespace S2.Meta
 
         public override ulong getHighestKnownNetworkBlockHeight()
         {
-            return networkBlockHeight;
+            ulong bh = getLastBlockHeight();
+            ulong netBlockNum = CoreProtocolMessage.determineHighestNetworkBlockNum();
+            if (bh < netBlockNum)
+            {
+                bh = netBlockNum;
+            }
+
+            return bh;
         }
 
         public override int getLastBlockVersion()
