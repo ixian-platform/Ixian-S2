@@ -95,14 +95,16 @@ namespace S2.Network
                             if (endpoint.presenceAddress.type == 'C')
                             {
                                 ToEntry value;
-                                if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
+                                // do not enforce payments for now
+                                IxianHandler.addTransaction(tx, null, true);
+                                /*if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
                                     && value.amount >= tx.fee)
                                 {
                                     IxianHandler.addTransaction(tx, null, true);
                                 } else
                                 {
                                     endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TxInsufficientFee, tx.id).getBytes());
-                                }
+                                }*/
                             }
                             else
                             {
@@ -194,7 +196,26 @@ namespace S2.Network
         private static void handlePresence(byte[] data, RemoteEndpoint endpoint)
         {
             // Parse the data and update entries in the presence list
-            PresenceList.updateFromBytes(data, 0);
+            Presence updatedPresence = PresenceList.updateFromBytes(data, 0);
+
+            // If a presence entry was updated, broadcast this message again
+            if (updatedPresence != null)
+            {
+                foreach (var pa in updatedPresence.addresses)
+                {
+                    byte[] hash = CryptoManager.lib.sha3_512sqTrunc(pa.getBytes());
+                    var iika = new InventoryItemKeepAlive(hash, pa.lastSeenTime, updatedPresence.wallet, pa.device);
+
+                    if (pa.type == 'R')
+                    {
+                        Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
+                    }
+                    else if (pa.type == 'C')
+                    {
+                        sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
+                    }
+                }
+            }
         }
 
         private static void sendKeepAlivePresenceToNeighbourSectorNodes(InventoryItemKeepAlive iika, RemoteEndpoint endpoint)
@@ -539,7 +560,7 @@ namespace S2.Network
                 }
             }
         }
-
+        
         static void handleGetPresence2(byte[] data, RemoteEndpoint endpoint)
         {
             using (MemoryStream m = new MemoryStream(data))
@@ -616,8 +637,6 @@ namespace S2.Network
             }
         }
 
-
-
         static void handleInventory2(byte[] data, RemoteEndpoint endpoint)
         {
             using (MemoryStream m = new MemoryStream(data))
@@ -667,9 +686,16 @@ namespace S2.Network
                             switch (item.type)
                             {
                                 case InventoryItemTypes.keepAlive:
-                                    ka_list.Add((InventoryItemKeepAlive)item);
-                                    pii.lastRequested = Clock.getTimestamp();
-                                    break;
+                                    var iika = (InventoryItemKeepAlive)item;
+                                    if (PresenceList.getPresenceByAddress(iika.address) != null)
+                                    {
+                                        ka_list.Add(iika);
+                                        pii.lastRequested = Clock.getTimestamp(); 
+                                    } else
+                                    {
+                                        InventoryCache.Instance.processInventoryItem(pii);
+                                    }
+                                break;
 
                                 case InventoryItemTypes.transaction:
                                     tx_list.Add(item.hash);

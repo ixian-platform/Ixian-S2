@@ -1,4 +1,5 @@
 ﻿using IXICore;
+using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.RegNames;
@@ -81,6 +82,8 @@ namespace S2.Meta
 
             // Init TIV
             tiv = new TransactionInclusion();
+
+            InventoryCache.init(new InventoryCacheS2());
 
             networkClientManagerRandomized = new NetworkClientManagerRandomized(CoreConfig.simultaneousConnectedNeighbors);
 
