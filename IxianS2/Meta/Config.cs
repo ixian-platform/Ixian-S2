@@ -80,6 +80,8 @@ namespace S2.Meta
         public static int maxRelaySectorNodesToRequest = 20;
         public static int maxRelaySectorNodesToConnectTo = 10;
 
+        public static bool verboseOutput = false;
+
         private Config()
         {
 
@@ -92,8 +94,8 @@ namespace S2.Meta
             Console.WriteLine("Starts a new instance of Ixian S2 Node");
             Console.WriteLine("");
             Console.WriteLine(" IxianS2.exe [-h] [-v] [-t] [-x] [-c] [-p 10234] [-a 8081] [-i ip] [-w ixian.wal] [-n seed1.ixian.io:10234]");
-            Console.WriteLine(" [--config ixian.cfg] [--maxLogSize 50] [--maxLogCount 10] [--disableWebStart] [--netdump]");
-            Console.WriteLine(" [--generateWallet] [--walletPassword]");
+            Console.WriteLine(" [--config ixian.cfg] [--maxLogSize 50] [--maxLogCount 10]  [--logVerbosity 14] [--disableWebStart]");
+            Console.WriteLine(" [--netdump] [--generateWallet] [--walletPassword] [--verboseOutput]");
             Console.WriteLine("");
             Console.WriteLine("    -h\t\t\t Displays this help");
             Console.WriteLine("    -v\t\t\t Displays version");
@@ -110,6 +112,7 @@ namespace S2.Meta
             Console.WriteLine("    --maxLogCount\t Specify maximum number of log files");
             Console.WriteLine("    --logVerbosity\t Sets log verbosity (0 = none, trace = 1, info = 2, warn = 4, error = 8)");
             Console.WriteLine("    --disableWebStart\t Disable running http://localhost:8081 on startup");
+            Console.WriteLine("    --verboseOutput\t\t Starts node with verbose output.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
@@ -329,6 +332,8 @@ namespace S2.Meta
             cmd_parser.Setup<bool>("testClient").Callback(value => isTestClient = true).Required();
 
             cmd_parser.Setup<int>("logVerbosity").Callback(value => logVerbosity = value).Required();
+
+            cmd_parser.Setup<bool>("verboseOutput").Callback(value => verboseOutput = value).SetDefault(false);
 
             cmd_parser.Parse(args);
 

@@ -21,7 +21,10 @@ namespace S2.Meta
 
         public StatsConsoleScreen()
         {
-            Console.Clear();
+            if (!Config.verboseOutput)
+            {
+                Console.Clear();
+            }
 
             Console.CursorVisible = ConsoleHelpers.verboseConsoleOutput;
 
@@ -87,6 +90,8 @@ namespace S2.Meta
             int connectionsOut = NetworkClientManager.getConnectedClients(true).Count();
             int connectionsIn = NetworkServer.getConnectedClients().Count();
 
+            string url = Config.apiBinds.First();
+
             writeLine(" ██╗██╗  ██╗██╗ █████╗ ███╗   ██╗    ███████╗██████╗  ");
             writeLine(" ██║╚██╗██╔╝██║██╔══██╗████╗  ██║    ██╔════╝╚════██╗ ");
             writeLine(" ██║ ╚███╔╝ ██║███████║██╔██╗ ██║    ███████╗ █████╔╝ ");
@@ -94,7 +99,7 @@ namespace S2.Meta
             writeLine(" ██║██╔╝ ██╗██║██║  ██║██║ ╚████║    ███████║███████╗ ");
             writeLine(" ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝    ╚══════╝╚══════╝ ");
             writeLine(" {0}", (Config.version + " BETA ").PadLeft(53));
-            writeLine(" {0}", ("http://localhost:" + Config.apiPort + "/"));
+            writeLine(" {0}", url.PadLeft(53));
             writeLine("──────────────────────────────────────────────────────");
             if (update_avail)
             {

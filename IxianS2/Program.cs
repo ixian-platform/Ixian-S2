@@ -176,7 +176,6 @@ namespace S2
 
         static void onStart(string[] args)
         {
-            bool verboseConsoleOutputSetting = ConsoleHelpers.verboseConsoleOutput;
             ConsoleHelpers.verboseConsoleOutput = true;
 
             Console.ForegroundColor = ConsoleColor.Blue;
@@ -223,7 +222,7 @@ namespace S2
             }
 
             // Start the actual S2 node
-            node.start(verboseConsoleOutputSetting);
+            node.start(Config.verboseOutput);
 
             running = true;
 
