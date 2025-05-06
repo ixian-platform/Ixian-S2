@@ -122,7 +122,7 @@ namespace S2.Network
                         break;
 
                     case ProtocolMessageCode.updatePresence:
-                        handlePresence(data, endpoint);
+                        handleUpdatePresence(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.keepAlivePresence:
@@ -182,6 +182,14 @@ namespace S2.Network
                         handleNameRecord(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.keepAlivesChunk:
+                        handleKeepAlivesChunk(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.getKeepAlives:
+                        CoreProtocolMessage.processGetKeepAlives(data, endpoint);
+                        break;
+
                     default:
                         Logging.warn("Unknown protocol message: {0}, from {1} ({2})", code, endpoint.getFullAddress(), endpoint.serverWalletAddress);
                         break;
@@ -193,7 +201,37 @@ namespace S2.Network
             }
         }
 
-        private static void handlePresence(byte[] data, RemoteEndpoint endpoint)
+        public static void handleKeepAlivesChunk(byte[] data, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream(data))
+            {
+                using (BinaryReader reader = new BinaryReader(m))
+                {
+                    int ka_count = (int)reader.ReadIxiVarUInt();
+
+                    int max_ka_per_chunk = CoreConfig.maximumKeepAlivesPerChunk;
+                    if (ka_count > max_ka_per_chunk)
+                    {
+                        ka_count = max_ka_per_chunk;
+                    }
+
+                    for (int i = 0; i < ka_count; i++)
+                    {
+                        if (m.Position == m.Length)
+                        {
+                            break;
+                        }
+
+                        int ka_len = (int)reader.ReadIxiVarUInt();
+                        byte[] ka_bytes = reader.ReadBytes(ka_len);
+
+                        handleKeepAlivePresence(ka_bytes, endpoint);
+                    }
+                }
+            }
+        }
+
+        private static void handleUpdatePresence(byte[] data, RemoteEndpoint endpoint)
         {
             // Parse the data and update entries in the presence list
             Presence updatedPresence = PresenceList.updateFromBytes(data, 0);
@@ -552,8 +590,11 @@ namespace S2.Network
                         NetworkClientManager.recalculateLocalTimeDifference();
 
                         // Get random presences
-                        endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'M' });
-                        endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'H' });
+                        if (node_type == 'M' || node_type == 'H')
+                        {
+                            endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'M' });
+                            endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'H' });
+                        }
 
                         CoreProtocolMessage.subscribeToEvents(endpoint);
                     }
