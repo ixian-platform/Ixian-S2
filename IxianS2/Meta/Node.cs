@@ -83,7 +83,7 @@ namespace S2.Meta
             // Init TIV
             tiv = new TransactionInclusion();
 
-            InventoryCache.init(new InventoryCacheS2());
+            InventoryCache.init(new InventoryCacheClient(tiv));
 
             networkClientManagerRandomized = new NetworkClientManagerRandomized(CoreConfig.simultaneousConnectedNeighbors);
 

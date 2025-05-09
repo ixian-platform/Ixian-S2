@@ -409,6 +409,8 @@ namespace S2.Network
 
         public static void handleGetBalance(byte[] data, RemoteEndpoint endpoint)
         {
+            var addressWithOffset = data.ReadIxiBytes(0);
+            addPendingRequest(ProtocolMessageCode.getBalance2, addressWithOffset.bytes, endpoint);
             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBalance2, data, null);
         }
 
