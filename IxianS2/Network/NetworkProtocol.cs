@@ -18,7 +18,9 @@ namespace S2.Network
     public class ProtocolMessage
     {
         static Dictionary<ProtocolMessageCode, Dictionary<byte[], (long timestamp, List<RemoteEndpoint> endpoints)>> pendingRequests = new() { { ProtocolMessageCode.getBalance2, new(new ByteArrayComparer()) },
-                                                                                                                                               { ProtocolMessageCode.getSectorNodes, new(new ByteArrayComparer()) }};
+                                                                                                                                               { ProtocolMessageCode.getSectorNodes, new(new ByteArrayComparer()) },
+                                                                                                                                               { ProtocolMessageCode.getPIT2, new(new ByteArrayComparer()) },
+                                                                                                                                               { ProtocolMessageCode.getNameRecord, new(new ByteArrayComparer()) }};
 
         static Dictionary<byte[], long> cachedSectors = new(new ByteArrayComparer());
         static Dictionary<byte[], (long timestamp, List<RegisteredNameDataRecord> nameRecords)> cachedNames = new(new ByteArrayComparer());
@@ -89,36 +91,7 @@ namespace S2.Network
                         break;
 
                     case ProtocolMessageCode.transactionData2:
-                        {
-                            Transaction tx = new Transaction(data, true, true);
-
-                            if (endpoint.presenceAddress.type == 'C')
-                            {
-                                ToEntry value;
-                                // do not enforce payments for now
-                                IxianHandler.addTransaction(tx, null, true);
-                                /*if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
-                                    && value.amount >= tx.fee)
-                                {
-                                    IxianHandler.addTransaction(tx, null, true);
-                                } else
-                                {
-                                    endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TxInsufficientFee, tx.id).getBytes());
-                                }*/
-                            }
-                            else
-                            {
-                                if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
-                                {
-                                    PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
-                                }
-
-                                Node.tiv.receivedNewTransaction(tx);
-                                Logging.info("Received new transaction {0}", tx.id);
-
-                                Node.addTransactionToActivityStorage(tx);
-                            }
-                        }
+                        handleTransactionData(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.updatePresence:
@@ -147,7 +120,7 @@ namespace S2.Network
                         break;
 
                     case ProtocolMessageCode.pitData2:
-                        Node.tiv.receivedPIT2(data, endpoint);
+                        handlePITData(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.rejected:
@@ -190,6 +163,14 @@ namespace S2.Network
                         CoreProtocolMessage.processGetKeepAlives(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.getBlockHeaders3:
+                        handleGetBlockHeaders3(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.getPIT2:
+                        handleGetPIT2(data, endpoint);
+                        break;
+
                     default:
                         Logging.warn("Unknown protocol message: {0}, from {1} ({2})", code, endpoint.getFullAddress(), endpoint.serverWalletAddress);
                         break;
@@ -199,6 +180,152 @@ namespace S2.Network
             {
                 Logging.error("Error parsing network message. Details: {0}", e.ToString());
             }
+        }
+        static void handlePITData(byte[] data, RemoteEndpoint endpoint)
+        {
+            int offset = 0;
+
+            var filterWithOffset = data.ReadIxiBytes(offset);
+            offset += filterWithOffset.bytesRead;
+
+            var blockNumWithOffset = data.GetIxiVarInt(offset);
+            offset += blockNumWithOffset.bytesRead;
+
+
+            byte[] key = new byte[offset];
+            Buffer.BlockCopy(data, filterWithOffset.bytesRead, key, 0, blockNumWithOffset.bytesRead);
+            Buffer.BlockCopy(data, 0, key, blockNumWithOffset.bytesRead, filterWithOffset.bytesRead);
+
+            byte[] pitData = new byte[data.Length - filterWithOffset.bytesRead];
+            Buffer.BlockCopy(data, filterWithOffset.bytesRead, pitData, 0, pitData.Length);
+
+            Node.tiv.receivedPIT2(pitData, endpoint);
+
+            var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getPIT2, key);
+            if (pendingRequest != default)
+            {
+                foreach (var prEndpoint in pendingRequest.endpoints)
+                {
+                    prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
+                }
+            }
+        }
+
+        public static void handleGetBlockHeaders3(byte[] data, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream(data))
+            {
+                using (BinaryReader reader = new BinaryReader(m))
+                {
+                    ulong from = reader.ReadIxiVarUInt();
+                    ulong totalCount = reader.ReadIxiVarUInt();
+
+                    if (totalCount < 1)
+                        return;
+
+                    ulong lastBlockNum = IxianHandler.getLastBlockHeight();
+
+                    if (from > lastBlockNum - 1)
+                        return;
+
+                    // Adjust total count if necessary
+                    if (from + totalCount > lastBlockNum)
+                        totalCount = lastBlockNum - from;
+
+                    if (totalCount < 1)
+                        return;
+
+                    // Cap total block headers sent
+                    if (totalCount > (ulong)CoreConfig.maximumBlockHeadersPerChunk)
+                        totalCount = (ulong)CoreConfig.maximumBlockHeadersPerChunk;
+
+                    if (endpoint == null)
+                    {
+                        return;
+                    }
+
+                    if (!endpoint.isConnected())
+                    {
+                        return;
+                    }
+
+                    // TODO TODO TODO block headers should be read from a separate storage and every node should keep a full copy
+                    for (ulong i = 0; i < totalCount;)
+                    {
+                        bool found = false;
+                        using (MemoryStream mOut = new MemoryStream())
+                        {
+                            using (BinaryWriter writer = new BinaryWriter(mOut))
+                            {
+                                for (int j = 0; j < CoreConfig.maximumBlockHeadersPerChunk && i < totalCount; j++)
+                                {
+                                    Block block = IxianHandler.getBlockHeader(from + i);
+                                    i++;
+                                    if (block == null)
+                                        break;
+
+                                    long rollback_len = mOut.Length;
+
+                                    found = true;
+                                    byte[] headerBytes = block.getBytes(true, true, true, true);
+                                    writer.WriteIxiVarInt(headerBytes.Length);
+                                    writer.Write(headerBytes);
+
+                                    if (mOut.Length > CoreConfig.maxMessageSize)
+                                    {
+                                        mOut.SetLength(rollback_len);
+                                        i--;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!found)
+                            {
+                                break;
+                            }
+                            endpoint.sendData(ProtocolMessageCode.blockHeaders3, mOut.ToArray());
+                        }
+                    }
+                }
+            }
+        }
+
+        public static void handleTransactionData(byte[] data, RemoteEndpoint endpoint)
+        {
+            Transaction tx = new Transaction(data, true, true);
+
+            if (endpoint.presenceAddress.type == 'C')
+            {
+                ToEntry value;
+                // do not enforce payments for now
+                IxianHandler.addTransaction(tx, null, true);
+                /*if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
+                    && value.amount >= tx.fee)
+                {
+                    IxianHandler.addTransaction(tx, null, true);
+                } else
+                {
+                    endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TxInsufficientFee, tx.id).getBytes());
+                }*/
+            }
+            else
+            {
+                if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                {
+                    PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
+                }
+
+                Node.tiv.receivedNewTransaction(tx);
+                Logging.info("Received new transaction {0}", Crypto.hashToString(tx.id));
+
+                Node.addTransactionToActivityStorage(tx);
+            }
+        }
+
+        public static void handleGetPIT2(byte[] data, RemoteEndpoint endpoint)
+        {
+            addPendingRequest(ProtocolMessageCode.getPIT2, data, endpoint);
+            NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getPIT2, data, null);
         }
 
         public static void handleKeepAlivesChunk(byte[] data, RemoteEndpoint endpoint)
@@ -511,13 +638,15 @@ namespace S2.Network
                     case RejectedCode.TxDust:
                         Logging.error("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
                         // remove tx from pending transactions
+                        PendingTransactions.remove(rej.data);
                         // notify client who sent this transaction to us
                         throw new NotImplementedException();
                         break;
 
                     case RejectedCode.TxDuplicate:
                         Logging.warn("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
-                        // All good, do nothing
+                        // All good, remove tx from pending transactions
+                        PendingTransactions.remove(rej.data);
                         throw new NotImplementedException();
                         break;
 

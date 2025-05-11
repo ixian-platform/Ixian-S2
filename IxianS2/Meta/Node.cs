@@ -3,7 +3,6 @@ using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.RegNames;
-using IXICore.Streaming;
 using IXICore.Utils;
 using S2.Network;
 using System;
@@ -81,7 +80,7 @@ namespace S2.Meta
             PeerStorage.init("");
 
             // Init TIV
-            tiv = new TransactionInclusion();
+            tiv = new TransactionInclusion(new S2TransactionInclusionCallbacks());
 
             InventoryCache.init(new InventoryCacheClient(tiv));
 
@@ -406,34 +405,6 @@ namespace S2.Meta
             return true;
         }
 
-        public override void receivedTransactionInclusionVerificationResponse(byte[] txid, bool verified)
-        {
-            // TODO implement error
-            // TODO implement blocknum
-
-            ActivityStatus status = ActivityStatus.Pending;
-            if (verified)
-            {
-                status = ActivityStatus.Final;
-                PendingTransactions.remove(txid);
-            }
-
-            ActivityStorage.updateStatus(txid, status, 0);
-        }
-
-        public override void receivedBlockHeader(Block block_header, bool verified)
-        {
-            if (balance.blockChecksum != null && balance.blockChecksum.SequenceEqual(block_header.blockChecksum))
-            {
-                balance.verified = true;
-            }
-            if (block_header.blockNum >= networkBlockHeight)
-            {
-                IxianHandler.status = NodeStatus.ready;
-            }
-            processPendingTransactions();
-        }
-
         public override ulong getLastBlockHeight()
         {
             if (tiv.getLastBlockHeader() == null)
@@ -550,7 +521,7 @@ namespace S2.Meta
                 {
                     foreach (var entry in wallet_list)
                     {
-                        activity = new Activity(IxianHandler.getWalletStorage().getSeedHash(), Base58Check.Base58CheckEncoding.EncodePlain(entry), Base58Check.Base58CheckEncoding.EncodePlain(primary_address.addressNoChecksum), transaction.toList, type, transaction.id, transaction.toList.First(x => x.Key.addressNoChecksum.SequenceEqual(entry)).ToString(), transaction.timeStamp, status, transaction.applied, transaction.getTxIdString());
+                        activity = new Activity(IxianHandler.getWalletStorage().getSeedHash(), Base58Check.Base58CheckEncoding.EncodePlain(entry), Base58Check.Base58CheckEncoding.EncodePlain(primary_address.addressNoChecksum), transaction.toList, type, transaction.id, transaction.toList[new Address(entry)].amount.ToString(), transaction.timeStamp, status, transaction.applied, transaction.getTxIdString());
                         ActivityStorage.insertActivity(activity);
                     }
                 }
@@ -635,36 +606,6 @@ namespace S2.Meta
         }
 
         public override RegisteredNameRecord getRegName(byte[] name, bool useAbsoluteId)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override bool receivedNewTransaction(Transaction tx)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override FriendMessage addMessageWithType(byte[] id, FriendMessageType type, Address wallet_address, int channel, string message, bool local_sender = false, Address sender_address = null, long timestamp = 0, bool fire_local_notification = true, int payable_data_len = 0)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override byte[] resizeImage(byte[] imageData, int width, int height, int quality)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void resubscribeEvents()
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void receiveStreamData(byte[] data, RemoteEndpoint endpoint, bool fireLocalNotification)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override long getTimeSinceLastBlock()
         {
             throw new NotImplementedException();
         }
