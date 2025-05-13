@@ -15,24 +15,11 @@ using Activity = IXICore.Meta.Activity;
 
 namespace S2.Meta
 {
-    class Balance
-    {
-        public Address address = null;
-        public IxiNumber balance = 0;
-        public ulong blockHeight = 0;
-        public byte[] blockChecksum = null;
-        public bool verified = false;
-        public long lastUpdate = 0;
-    }
-
     class Node : IxianNode
     {
         public static APIServer apiServer;
 
         public static StatsConsoleScreen statsConsoleScreen = null;
-
-
-        public static Balance balance = new Balance();      // Stores the last known balance for this node
 
         public static TransactionInclusion tiv = null;
 
@@ -41,9 +28,6 @@ namespace S2.Meta
 
         private static bool running = false;
 
-        private static ulong networkBlockHeight = 0;
-        private static byte[] networkBlockChecksum = null;
-        private static int networkBlockVersion = 0;
         private bool generatedNewWallet = false;
 
         public static NetworkClientManagerStatic networkClientManagerStatic = null;
@@ -285,7 +269,7 @@ namespace S2.Meta
             StreamProcessor.update();
 
             // Request initial wallet balance
-            if (balance.blockHeight == 0 || balance.lastUpdate + 300 < Clock.getTimestamp())
+            if (IxianHandler.balances.First().blockHeight == 0 || IxianHandler.balances.First().lastUpdate + 300 < Clock.getTimestamp())
             {
                 using (MemoryStream mw = new MemoryStream())
                 {
@@ -452,20 +436,20 @@ namespace S2.Meta
 
         public override Wallet getWallet(Address id)
         {
-            // TODO Properly implement this for multiple addresses
-            if(balance.address != null && id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+            foreach (Balance balance in IxianHandler.balances)
             {
-                return new Wallet(balance.address, balance.balance);
+                if (id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+                    return new Wallet(id, balance.balance);
             }
             return new Wallet(id, 0);
         }
 
         public override IxiNumber getWalletBalance(Address id)
         {
-            // TODO Properly implement this for multiple addresses
-            if (balance.address != null && id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+            foreach (Balance balance in IxianHandler.balances)
             {
-                return balance.balance;
+                if (id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+                    return balance.balance;
             }
             return 0;
         }

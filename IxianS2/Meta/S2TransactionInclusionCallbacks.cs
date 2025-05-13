@@ -22,13 +22,17 @@ namespace S2.Meta
             ActivityStorage.updateStatus(txid, status, 0);
         }
 
-        public void receivedBlockHeader(Block blockHeader, bool verified)
+        public void receivedBlockHeader(Block block_header, bool verified)
         {
-            if (Node.balance.blockChecksum != null && Node.balance.blockChecksum.SequenceEqual(blockHeader.blockChecksum))
+            foreach (Balance balance in IxianHandler.balances)
             {
-                Node.balance.verified = true;
+                if (balance.blockChecksum != null && balance.blockChecksum.SequenceEqual(block_header.blockChecksum))
+                {
+                    balance.verified = true;
+                }
             }
-            if (blockHeader.blockNum >= IxianHandler.getHighestKnownNetworkBlockHeight())
+
+            if (block_header.blockNum >= IxianHandler.getHighestKnownNetworkBlockHeight())
             {
                 IxianHandler.status = NodeStatus.ready;
             }

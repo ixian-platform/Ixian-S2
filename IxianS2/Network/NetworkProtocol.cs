@@ -773,36 +773,39 @@ namespace S2.Network
 
                     // Retrieve the latest balance
                     int balance_len = (int)reader.ReadIxiVarUInt();
-                    IxiNumber balance = new IxiNumber(new BigInteger(reader.ReadBytes(balance_len)));
+                    IxiNumber ixi_balance = new IxiNumber(new BigInteger(reader.ReadBytes(balance_len)));
 
-                    if (address.SequenceEqual(IxianHandler.getWalletStorage().getPrimaryAddress()))
+                    // Retrieve the blockheight for the balance
+                    ulong block_height = reader.ReadIxiVarUInt();
+
+                    foreach (Balance balance in IxianHandler.balances)
                     {
-                        // Retrieve the blockheight for the balance
-                        ulong block_height = reader.ReadIxiVarUInt();
-
-                        if (block_height > Node.balance.blockHeight && (Node.balance.balance != balance || Node.balance.blockHeight == 0))
+                        if (address.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
                         {
-                            byte[] block_checksum = reader.ReadBytes((int)reader.ReadIxiVarUInt());
+                            if (block_height > balance.blockHeight && (balance.balance != ixi_balance || balance.blockHeight == 0))
+                            {
+                                byte[] block_checksum = reader.ReadBytes((int)reader.ReadIxiVarUInt());
 
-                            Node.balance.address = address;
-                            Node.balance.balance = balance;
-                            Node.balance.blockHeight = block_height;
-                            Node.balance.blockChecksum = block_checksum;
-                            Node.balance.lastUpdate = Clock.getTimestamp();
-                            Node.balance.verified = false;
+                                balance.address = address;
+                                balance.balance = ixi_balance;
+                                balance.blockHeight = block_height;
+                                balance.blockChecksum = block_checksum;
+                                balance.verified = false;
+                            }
+
+                            balance.lastUpdate = Clock.getTimestamp();
+                            return;
                         }
                     }
-                    else
+
+                    // Forward balance to client
+                    var addressBytes = address.addressNoChecksum;
+                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getBalance2, addressBytes);
+                    if (pendingRequest != default)
                     {
-                        // Forward balance to client
-                        var addressBytes = address.addressNoChecksum;
-                        var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getBalance2, addressBytes);
-                        if (pendingRequest != default)
+                        foreach (var prEndpoint in pendingRequest.endpoints)
                         {
-                            foreach (var prEndpoint in pendingRequest.endpoints)
-                            {
-                                prEndpoint.sendData(ProtocolMessageCode.balance2, data, null, 0, MessagePriority.high);
-                            }
+                            prEndpoint.sendData(ProtocolMessageCode.balance2, data, null, 0, MessagePriority.high);
                         }
                     }
                 }
