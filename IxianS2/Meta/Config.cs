@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 
 namespace S2.Meta
@@ -169,6 +168,8 @@ namespace S2.Meta
                 return;
             }
             Logging.info("Reading config file: " + filename);
+            bool foundAddPeer = false;
+            bool foundAddTestPeer = false;
             List<string> lines = File.ReadAllLines(filename).ToList();
             foreach (string line in lines)
             {
@@ -216,10 +217,20 @@ namespace S2.Meta
                         externalIp = value;
                         break;
                     case "addPeer":
-                        CoreNetworkUtils.seedNodes.Add(new string[2] { value, null });
+                        if (!foundAddPeer)
+                        {
+                            NetworkUtils.seedNodes.Clear();
+                        }
+                        foundAddPeer = true;
+                        NetworkUtils.seedNodes.Add(new string[2] { value, null });
                         break;
                     case "addTestnetPeer":
-                        CoreNetworkUtils.seedTestNetNodes.Add(new string[2] { value, null });
+                        if (!foundAddTestPeer)
+                        {
+                            NetworkUtils.seedTestNetNodes.Clear();
+                        }
+                        foundAddTestPeer = true;
+                        NetworkUtils.seedTestNetNodes.Add(new string[2] { value, null });
                         break;
                     case "maxLogSize":
                         maxLogSize = int.Parse(value);
@@ -241,6 +252,26 @@ namespace S2.Meta
                         break;
                     case "logVerbosity":
                         logVerbosity = int.Parse(value);
+                        break;
+                    case "checksumLock":
+                        checksumLock = Encoding.UTF8.GetBytes(value);
+                        break;
+                    case "networkType":
+                        value = value.ToLower();
+                        switch (value)
+                        {
+                            case "mainnet":
+                                networkType = NetworkType.main;
+                                break;
+                            case "testnet":
+                                networkType = NetworkType.test;
+                                break;
+                            case "regtest":
+                                networkType = NetworkType.reg;
+                                break;
+                            default:
+                                throw new Exception(string.Format("Unknown network type '{0}'. Possible values are 'mainnet', 'testnet', 'regtest'", value));
+                        }
                         break;
                     default:
                         // unknown key
@@ -354,14 +385,14 @@ namespace S2.Meta
             {
                 if (networkType == NetworkType.test)
                 {
-                    CoreNetworkUtils.seedTestNetNodes = new List<string[]>
+                    NetworkUtils.seedTestNetNodes = new List<string[]>
                         {
                             new string[2] { seedNode, null }
                         };
                 }
                 else
                 {
-                    CoreNetworkUtils.seedNodes = new List<string[]>
+                    NetworkUtils.seedNodes = new List<string[]>
                         {
                             new string[2] { seedNode, null }
                         };
