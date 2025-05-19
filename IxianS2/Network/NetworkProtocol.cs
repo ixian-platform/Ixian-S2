@@ -78,6 +78,14 @@ namespace S2.Network
                         handleHelloData(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.attachEvent:
+                        NetworkEvents.handleAttachEventMessage(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.detachEvent:
+                        NetworkEvents.handleDetachEventMessage(data, endpoint);
+                        break;
+
                     case ProtocolMessageCode.s2data:
                         StreamProcessor.receiveData(data, endpoint);
                         break;
@@ -380,6 +388,9 @@ namespace S2.Network
                         sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
                     }
                 }
+
+                // Send this keepalive message to all subscribed clients
+                CoreProtocolMessage.broadcastEventDataMessage(NetworkEvents.Type.keepAlive, updatedPresence.wallet.addressNoChecksum, ProtocolMessageCode.updatePresence, data, updatedPresence.wallet.addressNoChecksum, endpoint);
             }
         }
 
@@ -455,6 +466,9 @@ namespace S2.Network
                 {
                     sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
                 }
+
+                // Send this keepalive message to all subscribed clients
+                CoreProtocolMessage.broadcastEventDataMessage(NetworkEvents.Type.keepAlive, address.addressNoChecksum, ProtocolMessageCode.keepAlivePresence, data, address.addressNoChecksum, endpoint);
             }
         }
 

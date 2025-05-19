@@ -194,6 +194,13 @@ namespace S2.Meta
 
             IxianHandler.addWallet(walletStorage);
 
+            // Prepare the balances list
+            List<Address> address_list = IxianHandler.getWalletStorage().getMyAddresses();
+            foreach (Address addr in address_list)
+            {
+                IxianHandler.balances.Add(new Balance(addr, 0));
+            }
+
             return true;
         }
 
