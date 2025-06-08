@@ -115,7 +115,7 @@ namespace S2
             }
 
             // Get all self addresses and run through them
-            List<string> self_addresses = CoreNetworkUtils.GetAllLocalIPAddresses();
+            List<string> self_addresses = NetworkUtils.GetAllLocalIPAddresses();
             foreach (string self_address in self_addresses)
             {
                 // Don't connect to self

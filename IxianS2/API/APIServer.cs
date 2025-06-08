@@ -1,5 +1,7 @@
 ﻿using IXICore;
+using IXICore.Network;
 using Newtonsoft.Json;
+using S2.Meta;
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -23,6 +25,10 @@ namespace S2
                 response = onTestAdd(parameters);
             }
 
+            if (methodName.Equals("status", StringComparison.OrdinalIgnoreCase))
+            {
+                response = onStatus(parameters);
+            }
 
             if (response == null)
             {
@@ -37,6 +43,22 @@ namespace S2
             context.Response.Close();
 
             return true;
+        }
+
+        private JsonResponse onStatus(Dictionary<string, object> parameters)
+        {
+            bool verbose = false;
+
+            if (parameters.ContainsKey("verbose"))
+            {
+                verbose = true;
+            }
+
+            var status = getStatus(verbose);
+
+            status.Add("Network Servers Static", Node.networkClientManagerStatic.getConnectedClients(true));
+
+            return new JsonResponse { result = status, error = null };
         }
 
         public JsonResponse onTestAdd(Dictionary<string, object> parameters)

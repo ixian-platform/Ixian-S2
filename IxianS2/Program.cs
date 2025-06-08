@@ -176,7 +176,6 @@ namespace S2
 
         static void onStart(string[] args)
         {
-            bool verboseConsoleOutputSetting = ConsoleHelpers.verboseConsoleOutput;
             ConsoleHelpers.verboseConsoleOutput = true;
 
             Console.ForegroundColor = ConsoleColor.Blue;
@@ -223,7 +222,7 @@ namespace S2
             }
 
             // Start the actual S2 node
-            node.start(verboseConsoleOutputSetting);
+            node.start(Config.verboseOutput);
 
             running = true;
 
@@ -248,7 +247,11 @@ namespace S2
             {
                 try
                 {
-                    if (Console.KeyAvailable)
+                    if (Node.update() == false)
+                    {
+                        IxianHandler.forceShutdown = true;
+                    }
+                    if (!Console.IsInputRedirected && Console.KeyAvailable)
                     {
                         ConsoleKeyInfo key = Console.ReadKey();
 
@@ -267,10 +270,6 @@ namespace S2
                             IxianHandler.forceShutdown = true;
                         }
 
-                    }
-                    if (Node.update() == false)
-                    {
-                        IxianHandler.forceShutdown = true;
                     }
                 }
                 catch (Exception e)

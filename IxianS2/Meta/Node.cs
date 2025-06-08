@@ -1,4 +1,5 @@
 ﻿using IXICore;
+using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.RegNames;
@@ -14,24 +15,11 @@ using Activity = IXICore.Meta.Activity;
 
 namespace S2.Meta
 {
-    class Balance
-    {
-        public Address address = null;
-        public IxiNumber balance = 0;
-        public ulong blockHeight = 0;
-        public byte[] blockChecksum = null;
-        public bool verified = false;
-        public long lastUpdate = 0;
-    }
-
     class Node : IxianNode
     {
         public static APIServer apiServer;
 
         public static StatsConsoleScreen statsConsoleScreen = null;
-
-
-        public static Balance balance = new Balance();      // Stores the last known balance for this node
 
         public static TransactionInclusion tiv = null;
 
@@ -40,15 +28,15 @@ namespace S2.Meta
 
         private static bool running = false;
 
-        private static ulong networkBlockHeight = 0;
-        private static byte[] networkBlockChecksum = null;
-        private static int networkBlockVersion = 0;
         private bool generatedNewWallet = false;
+
+        public static NetworkClientManagerStatic networkClientManagerStatic = null;
+        public static NetworkClientManagerRandomized networkClientManagerRandomized = null;
 
         public Node()
         {
             CoreConfig.simultaneousConnectedNeighbors = 6;
-            IxianHandler.init(Config.version, this, Config.networkType, true);
+            IxianHandler.init(Config.version, this, Config.networkType, true, Config.checksumLock);
             init();
         }
 
@@ -73,13 +61,23 @@ namespace S2.Meta
                 return;
             }
 
-            // Setup the stats console
-            statsConsoleScreen = new StatsConsoleScreen();
-
             PeerStorage.init("");
 
             // Init TIV
-            tiv = new TransactionInclusion();
+            tiv = new TransactionInclusion(new S2TransactionInclusionCallbacks());
+
+            InventoryCache.init(new InventoryCacheClient(tiv));
+
+            networkClientManagerRandomized = new NetworkClientManagerRandomized(CoreConfig.simultaneousConnectedNeighbors);
+
+            NetworkClientManager.init(networkClientManagerRandomized);
+
+            networkClientManagerStatic = new NetworkClientManagerStatic(CoreConfig.simultaneousConnectedNeighbors);
+
+            RelaySectors.init(CoreConfig.relaySectorLevels, null);
+
+            // Setup the stats console
+            statsConsoleScreen = new StatsConsoleScreen();
         }
 
         private bool initWallet()
@@ -196,6 +194,13 @@ namespace S2.Meta
 
             IxianHandler.addWallet(walletStorage);
 
+            // Prepare the balances list
+            List<Address> address_list = IxianHandler.getWalletStorage().getMyAddresses();
+            foreach (Address addr in address_list)
+            {
+                IxianHandler.balances.Add(new Balance(addr, 0));
+            }
+
             return true;
         }
 
@@ -204,7 +209,7 @@ namespace S2.Meta
             UpdateVerify.start();
 
             // Generate presence list
-            PresenceList.init(IxianHandler.publicIP, Config.serverPort, 'R');
+            PresenceList.init(IxianHandler.publicIP, Config.serverPort, 'R', CoreConfig.relayKeepAliveInterval);
 
             // Start the network queue
             NetworkQueue.start();
@@ -244,7 +249,8 @@ namespace S2.Meta
             NetworkServer.beginNetworkOperations();
 
             // Start the network client manager
-            NetworkClientManager.start(2);
+            NetworkClientManager.start(1);
+            networkClientManagerStatic.start(0);
 
             // Start the keepalive thread
             PresenceList.startKeepAlive();
@@ -270,17 +276,30 @@ namespace S2.Meta
             StreamProcessor.update();
 
             // Request initial wallet balance
-            if (balance.blockHeight == 0 || balance.lastUpdate + 300 < Clock.getTimestamp())
+            if (IxianHandler.balances.First().blockHeight == 0 || IxianHandler.balances.First().lastUpdate + 300 < Clock.getTimestamp())
             {
                 using (MemoryStream mw = new MemoryStream())
                 {
                     using (BinaryWriter writer = new BinaryWriter(mw))
                     {
-                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressWithChecksum.Length);
-                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressWithChecksum);
+                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
+                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
                         NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getBalance2, mw.ToArray(), null);
                     }
                 }
+
+                using (MemoryStream mw = new MemoryStream())
+                {
+                    using (BinaryWriter writer = new BinaryWriter(mw))
+                    {
+                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
+                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
+                        writer.WriteIxiVarInt(Config.maxRelaySectorNodesToRequest);
+                        NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getSectorNodes, mw.ToArray(), null);
+                    }
+                }
+
+                ProtocolMessage.clearOldData();
             }
 
             if (IxianHandler.status != NodeStatus.warmUp)
@@ -334,6 +353,7 @@ namespace S2.Meta
             }
 
             // Stop all network clients
+            networkClientManagerStatic.stop();
             NetworkClientManager.stop();
 
             // Stop the network server
@@ -376,43 +396,6 @@ namespace S2.Meta
             return true;
         }
 
-
-        static public void setNetworkBlock(ulong block_height, byte[] block_checksum, int block_version)
-        {
-            networkBlockHeight = block_height;
-            networkBlockChecksum = block_checksum;
-            networkBlockVersion = block_version;
-        }
-
-        public override void receivedTransactionInclusionVerificationResponse(byte[] txid, bool verified)
-        {
-            // TODO implement error
-            // TODO implement blocknum
-
-            ActivityStatus status = ActivityStatus.Pending;
-            if (verified)
-            {
-                status = ActivityStatus.Final;
-                PendingTransactions.remove(txid);
-            }
-
-            ActivityStorage.updateStatus(txid, status, 0);
-        }
-
-        public override void receivedBlockHeader(Block block_header, bool verified)
-        {
-            if (balance.blockChecksum != null && balance.blockChecksum.SequenceEqual(block_header.blockChecksum))
-            {
-                balance.verified = true;
-            }
-            if (block_header.blockNum >= networkBlockHeight)
-            {
-                IxianHandler.status = NodeStatus.ready;
-                setNetworkBlock(block_header.blockNum, block_header.blockChecksum, block_header.version);
-            }
-            processPendingTransactions();
-        }
-
         public override ulong getLastBlockHeight()
         {
             if (tiv.getLastBlockHeader() == null)
@@ -424,7 +407,14 @@ namespace S2.Meta
 
         public override ulong getHighestKnownNetworkBlockHeight()
         {
-            return networkBlockHeight;
+            ulong bh = getLastBlockHeight();
+            ulong netBlockNum = CoreProtocolMessage.determineHighestNetworkBlockNum();
+            if (bh < netBlockNum)
+            {
+                bh = netBlockNum;
+            }
+
+            return bh;
         }
 
         public override int getLastBlockVersion()
@@ -438,11 +428,11 @@ namespace S2.Meta
             return tiv.getLastBlockHeader().version;
         }
 
-        public override bool addTransaction(Transaction tx, bool force_broadcast)
+        public override bool addTransaction(Transaction tx, List<Address> relayNodeAddresses, bool force_broadcast)
         {
             // TODO Send to peer if directly connectable
             CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
-            PendingTransactions.addPendingLocalTransaction(tx);
+            PendingTransactions.addPendingLocalTransaction(tx, null);
             return true;
         }
 
@@ -453,20 +443,20 @@ namespace S2.Meta
 
         public override Wallet getWallet(Address id)
         {
-            // TODO Properly implement this for multiple addresses
-            if(balance.address != null && id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+            foreach (Balance balance in IxianHandler.balances)
             {
-                return new Wallet(balance.address, balance.balance);
+                if (id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+                    return new Wallet(id, balance.balance);
             }
             return new Wallet(id, 0);
         }
 
         public override IxiNumber getWalletBalance(Address id)
         {
-            // TODO Properly implement this for multiple addresses
-            if (balance.address != null && id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+            foreach (Balance balance in IxianHandler.balances)
             {
-                return balance.balance;
+                if (id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
+                    return balance.balance;
             }
             return 0;
         }
@@ -522,7 +512,7 @@ namespace S2.Meta
                 {
                     foreach (var entry in wallet_list)
                     {
-                        activity = new Activity(IxianHandler.getWalletStorage().getSeedHash(), Base58Check.Base58CheckEncoding.EncodePlain(entry), Base58Check.Base58CheckEncoding.EncodePlain(primary_address.addressNoChecksum), transaction.toList, type, transaction.id, transaction.toList.First(x => x.Key.addressNoChecksum.SequenceEqual(entry)).ToString(), transaction.timeStamp, status, transaction.applied, transaction.getTxIdString());
+                        activity = new Activity(IxianHandler.getWalletStorage().getSeedHash(), Base58Check.Base58CheckEncoding.EncodePlain(entry), Base58Check.Base58CheckEncoding.EncodePlain(primary_address.addressNoChecksum), transaction.toList, type, transaction.id, transaction.toList[new Address(entry)].amount.ToString(), transaction.timeStamp, status, transaction.applied, transaction.getTxIdString());
                         ActivityStorage.insertActivity(activity);
                     }
                 }
@@ -607,6 +597,11 @@ namespace S2.Meta
         }
 
         public override RegisteredNameRecord getRegName(byte[] name, bool useAbsoluteId)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void triggerSignerPowSolutionFound()
         {
             throw new NotImplementedException();
         }

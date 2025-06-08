@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Text;
 
 namespace S2.Meta
 {
@@ -45,9 +45,9 @@ namespace S2.Meta
         public static string externalIp = "";
 
         // Read-only values
-        public static readonly string version = "xs2c-0.5.3a"; // S2 Node version
+        public static readonly string version = "xs2c-0.5.4-dev"; // S2 Node version
 
-        public static readonly string checkVersionUrl = "https://www.ixian.io/s2-update.txt";
+        public static readonly string checkVersionUrl = "https://resources.ixian.io/s2-update.txt";
         public static readonly int checkVersionSeconds = 6 * 60 * 60; // 6 hours
 
         public static readonly int maximumStreamClients = 1000; // Maximum number of stream clients this server can accept
@@ -76,6 +76,14 @@ namespace S2.Meta
         /// </summary>
         public static string blockNotifyCommand = "";
 
+
+        public static int maxRelaySectorNodesToRequest = 20;
+        public static int maxRelaySectorNodesToConnectTo = 10;
+
+        public static bool verboseOutput = false;
+
+        public static byte[] checksumLock = null;
+
         private Config()
         {
 
@@ -88,8 +96,8 @@ namespace S2.Meta
             Console.WriteLine("Starts a new instance of Ixian S2 Node");
             Console.WriteLine("");
             Console.WriteLine(" IxianS2.exe [-h] [-v] [-t] [-x] [-c] [-p 10234] [-a 8081] [-i ip] [-w ixian.wal] [-n seed1.ixian.io:10234]");
-            Console.WriteLine(" [--config ixian.cfg] [--maxLogSize 50] [--maxLogCount 10] [--disableWebStart] [--netdump]");
-            Console.WriteLine(" [--generateWallet] [--walletPassword]");
+            Console.WriteLine(" [--config ixian.cfg] [--maxLogSize 50] [--maxLogCount 10]  [--logVerbosity 14] [--disableWebStart]");
+            Console.WriteLine(" [--netdump] [--generateWallet] [--walletPassword] [--checksumLock Ixian] [--verboseOutput]");
             Console.WriteLine("");
             Console.WriteLine("    -h\t\t\t Displays this help");
             Console.WriteLine("    -v\t\t\t Displays version");
@@ -106,6 +114,8 @@ namespace S2.Meta
             Console.WriteLine("    --maxLogCount\t Specify maximum number of log files");
             Console.WriteLine("    --logVerbosity\t Sets log verbosity (0 = none, trace = 1, info = 2, warn = 4, error = 8)");
             Console.WriteLine("    --disableWebStart\t Disable running http://localhost:8081 on startup");
+            Console.WriteLine("    --checksumLock\t\t Sets the checksum lock for seeding checksums - useful for custom networks.");
+            Console.WriteLine("    --verboseOutput\t\t Starts node with verbose output.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
@@ -158,6 +168,8 @@ namespace S2.Meta
                 return;
             }
             Logging.info("Reading config file: " + filename);
+            bool foundAddPeer = false;
+            bool foundAddTestPeer = false;
             List<string> lines = File.ReadAllLines(filename).ToList();
             foreach (string line in lines)
             {
@@ -205,10 +217,20 @@ namespace S2.Meta
                         externalIp = value;
                         break;
                     case "addPeer":
-                        CoreNetworkUtils.seedNodes.Add(new string[2] { value, null });
+                        if (!foundAddPeer)
+                        {
+                            NetworkUtils.seedNodes.Clear();
+                        }
+                        foundAddPeer = true;
+                        NetworkUtils.seedNodes.Add(new string[2] { value, null });
                         break;
                     case "addTestnetPeer":
-                        CoreNetworkUtils.seedTestNetNodes.Add(new string[2] { value, null });
+                        if (!foundAddTestPeer)
+                        {
+                            NetworkUtils.seedTestNetNodes.Clear();
+                        }
+                        foundAddTestPeer = true;
+                        NetworkUtils.seedTestNetNodes.Add(new string[2] { value, null });
                         break;
                     case "maxLogSize":
                         maxLogSize = int.Parse(value);
@@ -230,6 +252,26 @@ namespace S2.Meta
                         break;
                     case "logVerbosity":
                         logVerbosity = int.Parse(value);
+                        break;
+                    case "checksumLock":
+                        checksumLock = Encoding.UTF8.GetBytes(value);
+                        break;
+                    case "networkType":
+                        value = value.ToLower();
+                        switch (value)
+                        {
+                            case "mainnet":
+                                networkType = NetworkType.main;
+                                break;
+                            case "testnet":
+                                networkType = NetworkType.test;
+                                break;
+                            case "regtest":
+                                networkType = NetworkType.reg;
+                                break;
+                            default:
+                                throw new Exception(string.Format("Unknown network type '{0}'. Possible values are 'mainnet', 'testnet', 'regtest'", value));
+                        }
                         break;
                     default:
                         // unknown key
@@ -314,6 +356,7 @@ namespace S2.Meta
 
             cmd_parser.Setup<bool>("onlyShowAddresses").Callback(value => onlyShowAddresses = true).Required();
 
+            cmd_parser.Setup<string>("checksumLock").Callback(value => checksumLock = Encoding.UTF8.GetBytes(value)).Required();
 
             // Debug
             cmd_parser.Setup<string>("netdump").Callback(value => networkDumpFile = value).SetDefault("");
@@ -325,6 +368,8 @@ namespace S2.Meta
             cmd_parser.Setup<bool>("testClient").Callback(value => isTestClient = true).Required();
 
             cmd_parser.Setup<int>("logVerbosity").Callback(value => logVerbosity = value).Required();
+
+            cmd_parser.Setup<bool>("verboseOutput").Callback(value => verboseOutput = value).SetDefault(false);
 
             cmd_parser.Parse(args);
 
@@ -340,14 +385,14 @@ namespace S2.Meta
             {
                 if (networkType == NetworkType.test)
                 {
-                    CoreNetworkUtils.seedTestNetNodes = new List<string[]>
+                    NetworkUtils.seedTestNetNodes = new List<string[]>
                         {
                             new string[2] { seedNode, null }
                         };
                 }
                 else
                 {
-                    CoreNetworkUtils.seedNodes = new List<string[]>
+                    NetworkUtils.seedNodes = new List<string[]>
                         {
                             new string[2] { seedNode, null }
                         };
