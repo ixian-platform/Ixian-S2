@@ -396,7 +396,7 @@ namespace S2.Network
 
         private static void sendKeepAlivePresenceToNeighbourSectorNodes(InventoryItemKeepAlive iika, RemoteEndpoint endpoint)
         {
-            var sectorNodes = RelaySectors.Instance.getSectorNodes(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum, Config.maxRelaySectorNodesToConnectTo);
+            var sectorNodes = RelaySectors.Instance.getSectorNodes(IxianHandler.primaryWalletAddressHashed, Config.maxRelaySectorNodesToConnectTo);
             var thisNodeIndex = sectorNodes.FindIndex(x => x.addressNoChecksum.SequenceEqual(iika.address.addressNoChecksum));
 
             if (endpoint.presenceAddress.type != 'C')
@@ -428,7 +428,7 @@ namespace S2.Network
                     continue;
                 }
 
-                var client = NetworkClientManager.getClient(sectorNodes[i]);
+                var client = Node.networkClientManagerStatic.getClient(sectorNodes[i]);
                 if (client != null)
                 {
                     client.addInventoryItem(iika);
@@ -558,8 +558,8 @@ namespace S2.Network
         public static void handleGetSectorNodes(byte[] data, RemoteEndpoint endpoint)
         {
             int offset = 0;
-            var addressWithOffset = data.ReadIxiBytes(offset);
-            offset += addressWithOffset.bytesRead;
+            var prefixWithOffset = data.ReadIxiBytes(offset);
+            offset += prefixWithOffset.bytesRead;
 
             var maxRelayCountWithOffset = data.GetIxiVarUInt(offset);
             offset += maxRelayCountWithOffset.bytesRead;
@@ -570,15 +570,15 @@ namespace S2.Network
                 maxRelayCount = 20;
             }
 
-            if (cachedSectors.ContainsKey(addressWithOffset.bytes))
+            if (cachedSectors.ContainsKey(prefixWithOffset.bytes))
             {
-                var relayList = RelaySectors.Instance.getSectorNodes(addressWithOffset.bytes, maxRelayCount);
+                var relayList = RelaySectors.Instance.getSectorNodes(prefixWithOffset.bytes, maxRelayCount);
 
-                CoreProtocolMessage.sendSectorNodes(addressWithOffset.bytes, relayList, endpoint);
+                CoreProtocolMessage.sendSectorNodes(prefixWithOffset.bytes, relayList, endpoint);
             }
             else
             {
-                addPendingRequest(ProtocolMessageCode.getSectorNodes, addressWithOffset.bytes, endpoint);
+                addPendingRequest(ProtocolMessageCode.getSectorNodes, prefixWithOffset.bytes, endpoint);
                 NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getSectorNodes, data, null);
             }
         }
@@ -609,7 +609,7 @@ namespace S2.Network
 
             cachedSectors.AddOrReplace(prefix, Clock.getTimestamp());
 
-            if (IxianHandler.isMyAddress(new Address(prefix)))
+            if (IxianHandler.primaryWalletAddressHashed.SequenceEqual(prefix))
             {
                 List<Peer> peers = new();
                 var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToConnectTo);
