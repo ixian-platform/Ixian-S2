@@ -396,7 +396,7 @@ namespace S2.Network
 
         private static void sendKeepAlivePresenceToNeighbourSectorNodes(InventoryItemKeepAlive iika, RemoteEndpoint endpoint)
         {
-            var sectorNodes = RelaySectors.Instance.getSectorNodes(IxianHandler.primaryWalletAddressHashed, Config.maxRelaySectorNodesToConnectTo);
+            var sectorNodes = RelaySectors.Instance.getSectorNodes(IxianHandler.primaryWalletAddress.sectorPrefix, Config.maxRelaySectorNodesToConnectTo);
             var thisNodeIndex = sectorNodes.FindIndex(x => x.addressNoChecksum.SequenceEqual(iika.address.addressNoChecksum));
 
             if (endpoint.presenceAddress.type != 'C')
@@ -609,7 +609,7 @@ namespace S2.Network
 
             cachedSectors.AddOrReplace(prefix, Clock.getTimestamp());
 
-            if (IxianHandler.primaryWalletAddressHashed.SequenceEqual(prefix))
+            if (IxianHandler.primaryWalletAddress.sectorPrefix.SequenceEqual(prefix))
             {
                 List<Peer> peers = new();
                 var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToConnectTo);

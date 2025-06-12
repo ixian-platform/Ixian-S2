@@ -292,8 +292,8 @@ namespace S2.Meta
                 {
                     using (BinaryWriter writer = new BinaryWriter(mw))
                     {
-                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
-                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
+                        writer.WriteIxiVarInt(IxianHandler.primaryWalletAddress.sectorPrefix.Length);
+                        writer.Write(IxianHandler.primaryWalletAddress.sectorPrefix);
                         writer.WriteIxiVarInt(Config.maxRelaySectorNodesToRequest);
                         NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getSectorNodes, mw.ToArray(), null);
                     }
