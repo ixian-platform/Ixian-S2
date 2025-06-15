@@ -20,7 +20,9 @@ namespace S2.Network
         static Dictionary<ProtocolMessageCode, Dictionary<byte[], (long timestamp, List<RemoteEndpoint> endpoints)>> pendingRequests = new() { { ProtocolMessageCode.getBalance2, new(new ByteArrayComparer()) },
                                                                                                                                                { ProtocolMessageCode.getSectorNodes, new(new ByteArrayComparer()) },
                                                                                                                                                { ProtocolMessageCode.getPIT2, new(new ByteArrayComparer()) },
-                                                                                                                                               { ProtocolMessageCode.getNameRecord, new(new ByteArrayComparer()) }};
+                                                                                                                                               { ProtocolMessageCode.getNameRecord, new(new ByteArrayComparer()) },
+                                                                                                                                               { ProtocolMessageCode.getTransaction3, new(new ByteArrayComparer()) },
+                                                                                                                                               { ProtocolMessageCode.getRelevantBlockTransactions, new(new ByteArrayComparer()) }};
 
         static Dictionary<byte[], long> cachedSectors = new(new ByteArrayComparer());
         static Dictionary<byte[], (long timestamp, List<RegisteredNameDataRecord> nameRecords)> cachedNames = new(new ByteArrayComparer());
@@ -127,6 +129,10 @@ namespace S2.Network
                         Node.tiv.receivedBlockHeaders3(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.compactBlockHeaders1:
+                        handleCompactBlockHeaders1(data, endpoint);
+                        break;
+
                     case ProtocolMessageCode.pitData2:
                         handlePITData(data, endpoint);
                         break;
@@ -179,6 +185,14 @@ namespace S2.Network
                         handleGetPIT2(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.getRelevantBlockTransactions:
+                        handleGetRelevantBlockTransactions(data, endpoint);
+                        break;
+
+                    case ProtocolMessageCode.getTransaction3:
+                        handleGetTransaction(data, endpoint);
+                        break;
+
                     default:
                         Logging.warn("Unknown protocol message: {0}, from {1} ({2})", code, endpoint.getFullAddress(), endpoint.serverWalletAddress);
                         break;
@@ -189,6 +203,51 @@ namespace S2.Network
                 Logging.error("Error parsing network message. Details: {0}", e.ToString());
             }
         }
+
+        static void handleCompactBlockHeaders1(byte[] data, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream(data))
+            {
+                using (BinaryReader reader = new BinaryReader(m))
+                {
+                    ulong from = reader.ReadIxiVarUInt();
+                    ulong totalCount = reader.ReadIxiVarUInt();
+
+                    int filterLen = (int)reader.ReadIxiVarUInt();
+                    byte[] filterBytes = reader.ReadBytes(filterLen);
+
+                    byte[] prKey = new byte[reader.BaseStream.Position];
+                    Array.Copy(data, 0, prKey, 0, prKey.Length);
+                    
+                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, prKey);
+                    if (pendingRequest != default)
+                    {
+                        foreach (var client in pendingRequest.endpoints)
+                        {
+                            client.sendData(ProtocolMessageCode.compactBlockHeaders1, data);
+                        }
+                    }
+                }
+            }
+        }
+
+        static void handleGetTransaction(byte[] data, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream(data))
+            {
+                using (BinaryReader reader = new BinaryReader(m))
+                {
+                    // Retrieve the transaction id
+                    int txid_len = (int)reader.ReadIxiVarUInt();
+                    byte[] txid = reader.ReadBytes(txid_len);
+                    ulong block_num = reader.ReadIxiVarUInt();
+
+                    addPendingRequest(ProtocolMessageCode.getTransaction3, txid, endpoint);
+                    NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getTransaction3, data, null);
+                }
+            }
+        }
+
         static void handlePITData(byte[] data, RemoteEndpoint endpoint)
         {
             int offset = 0;
@@ -298,9 +357,30 @@ namespace S2.Network
             }
         }
 
+        private static List<RemoteEndpoint> getClientsSubscribedToAddress(Address address)
+        {
+            List<RemoteEndpoint> clients = new();
+            foreach (var client in NetworkServer.connectedClients)
+            {
+                if (!client.helloReceived)
+                {
+                    continue;
+                }
+
+                if (client.isSubscribedToAddress(NetworkEvents.Type.transactionFrom, address.addressNoChecksum)
+                    || client.isSubscribedToAddress(NetworkEvents.Type.transactionTo, address.addressNoChecksum))
+                {
+                    clients.Add(client);
+                }
+            }
+            return clients;
+        }
+
         public static void handleTransactionData(byte[] data, RemoteEndpoint endpoint)
         {
             Transaction tx = new Transaction(data, true, true);
+
+            bool myTransaction = false;
 
             if (endpoint.presenceAddress.type == 'C')
             {
@@ -317,6 +397,55 @@ namespace S2.Network
                 }*/
             }
             else
+            {
+                // Check if my transaction
+                if (IxianHandler.isMyAddress(tx.pubKey))
+                {
+                    myTransaction = true;
+                }
+
+                var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getTransaction3, tx.pubKey.addressNoChecksum);
+                if (pendingRequest != default)
+                {
+                    foreach (var client in pendingRequest.endpoints)
+                    {
+                        client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                    }
+                }
+
+                var clients = getClientsSubscribedToAddress(tx.pubKey);
+                foreach (var client in clients)
+                {
+                    client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                }
+
+                foreach (var toEntry in tx.toList)
+                {
+                    if (IxianHandler.isMyAddress(toEntry.Key))
+                    {
+                        myTransaction = true;
+                    }
+                    else
+                    {
+                        pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getTransaction3, toEntry.Key.addressNoChecksum);
+                        if (pendingRequest != default)
+                        {
+                            foreach (var client in pendingRequest.endpoints)
+                            {
+                                client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                            }
+                        }
+
+                        clients = getClientsSubscribedToAddress(toEntry.Key);
+                        foreach (var client in clients)
+                        {
+                            client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                        }
+                    }
+                }
+            }
+
+            if (myTransaction)
             {
                 if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
                 {
@@ -555,6 +684,13 @@ namespace S2.Network
             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBalance2, data, null);
         }
 
+
+        public static void handleGetRelevantBlockTransactions(byte[] data, RemoteEndpoint endpoint)
+        {
+            addPendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, data, endpoint);
+            NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getRelevantBlockTransactions, data, null);
+        }
+
         public static void handleGetSectorNodes(byte[] data, RemoteEndpoint endpoint)
         {
             int offset = 0;
@@ -739,9 +875,8 @@ namespace S2.Network
                         {
                             endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'M' });
                             endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'H' });
+                            CoreProtocolMessage.subscribeToEvents(endpoint);
                         }
-
-                        CoreProtocolMessage.subscribeToEvents(endpoint);
                     }
                 }
             }

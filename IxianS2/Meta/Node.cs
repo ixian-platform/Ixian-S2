@@ -64,7 +64,7 @@ namespace S2.Meta
             PeerStorage.init("");
 
             // Init TIV
-            tiv = new TransactionInclusion(new S2TransactionInclusionCallbacks());
+            tiv = new TransactionInclusion(new S2TransactionInclusionCallbacks(), true);
 
             InventoryCache.init(new InventoryCacheClient(tiv));
 
