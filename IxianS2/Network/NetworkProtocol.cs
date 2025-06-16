@@ -37,10 +37,16 @@ namespace S2.Network
         {
             foreach (var prType in pendingRequests)
             {
+                int expiration = 30;
+                if (prType.Key == ProtocolMessageCode.getRelevantBlockTransactions)
+                {
+                    expiration = 120;
+                }
+
                 Dictionary<byte[], (long timestamp, List<RemoteEndpoint> endpoint)> tmpPendingRequests = new(prType.Value, new ByteArrayComparer());
                 foreach (var pending in tmpPendingRequests)
                 {
-                    if (Clock.getTimestamp() - pending.Value.timestamp > 30)
+                    if (Clock.getTimestamp() - pending.Value.timestamp > expiration)
                     {
                         prType.Value.Remove(pending.Key);
                     }
@@ -218,7 +224,9 @@ namespace S2.Network
 
                     byte[] prKey = new byte[reader.BaseStream.Position];
                     Array.Copy(data, 0, prKey, 0, prKey.Length);
-                    
+
+                    Logging.info("Handling compactBlockHeaders1 for: " + Crypto.hashToString(prKey));
+
                     var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, prKey);
                     if (pendingRequest != default)
                     {
@@ -687,6 +695,7 @@ namespace S2.Network
 
         public static void handleGetRelevantBlockTransactions(byte[] data, RemoteEndpoint endpoint)
         {
+            Logging.info("Handling getRelevantBlockTransactions for: " + Crypto.hashToString(data));
             addPendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, data, endpoint);
             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getRelevantBlockTransactions, data, null);
         }
