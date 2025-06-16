@@ -789,9 +789,9 @@ namespace S2.Network
                 Rejected rej = new Rejected(data);
                 switch (rej.code)
                 {
-                    case RejectedCode.TxInvalid:
-                    case RejectedCode.TxInsufficientFee:
-                    case RejectedCode.TxDust:
+                    case RejectedCode.TransactionInvalid:
+                    case RejectedCode.TransactionInsufficientFee:
+                    case RejectedCode.TransactionDust:
                         Logging.error("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
                         // remove tx from pending transactions
                         PendingTransactions.remove(rej.data);
@@ -799,7 +799,7 @@ namespace S2.Network
                         throw new NotImplementedException();
                         break;
 
-                    case RejectedCode.TxDuplicate:
+                    case RejectedCode.TransactionDuplicate:
                         Logging.warn("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
                         // All good, remove tx from pending transactions
                         PendingTransactions.remove(rej.data);
