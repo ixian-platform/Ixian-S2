@@ -225,8 +225,6 @@ namespace S2.Network
                     byte[] prKey = new byte[reader.BaseStream.Position];
                     Array.Copy(data, 0, prKey, 0, prKey.Length);
 
-                    Logging.info("Handling compactBlockHeaders1 for: " + Crypto.hashToString(prKey));
-
                     var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, prKey);
                     if (pendingRequest != default)
                     {
@@ -695,7 +693,6 @@ namespace S2.Network
 
         public static void handleGetRelevantBlockTransactions(byte[] data, RemoteEndpoint endpoint)
         {
-            Logging.info("Handling getRelevantBlockTransactions for: " + Crypto.hashToString(data));
             addPendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, data, endpoint);
             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getRelevantBlockTransactions, data, null);
         }
