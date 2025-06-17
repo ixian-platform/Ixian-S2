@@ -430,9 +430,13 @@ namespace S2.Meta
 
         public override bool addTransaction(Transaction tx, List<Address> relayNodeAddresses, bool force_broadcast)
         {
-            // TODO Send to peer if directly connectable
+            return addTransaction(null, tx, relayNodeAddresses, force_broadcast);
+        }
+
+        public static bool addTransaction(Address senderAddress, Transaction tx, List<Address> relayNodeAddresses, bool force_broadcast)
+        {
             CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
-            PendingTransactions.addPendingLocalTransaction(tx, null);
+            PendingTransactions.addPendingLocalTransaction(tx, null, null, senderAddress);
             return true;
         }
 

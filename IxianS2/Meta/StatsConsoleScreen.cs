@@ -99,7 +99,7 @@ namespace S2.Meta
             writeLine(" ██║██╔╝ ██╗██║██║  ██║██║ ╚████║    ███████║███████╗ ");
             writeLine(" ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝    ╚══════╝╚══════╝ ");
             writeLine(" {0}", (Config.version + " BETA ").PadLeft(53));
-            writeLine(" {0}", url.PadLeft(53));
+            writeLine(" {0}", url);
             writeLine("──────────────────────────────────────────────────────");
             if (update_avail)
             {

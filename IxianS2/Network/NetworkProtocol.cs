@@ -392,7 +392,7 @@ namespace S2.Network
             {
                 ToEntry value;
                 // do not enforce payments for now
-                IxianHandler.addTransaction(tx, null, true);
+                Node.addTransaction(endpoint.serverWalletAddress, tx, null, true);
                 /*if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
                     && value.amount >= tx.fee)
                 {
@@ -792,18 +792,30 @@ namespace S2.Network
                     case RejectedCode.TransactionInvalid:
                     case RejectedCode.TransactionInsufficientFee:
                     case RejectedCode.TransactionDust:
-                        Logging.error("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
-                        // remove tx from pending transactions
-                        PendingTransactions.remove(rej.data);
-                        // notify client who sent this transaction to us
-                        throw new NotImplementedException();
+                        {
+                            Logging.error("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
+                            // remove tx from pending transactions
+                            var pendingTx = PendingTransactions.remove(rej.data);
+                            if (pendingTx?.senderAddress != null)
+                            {
+                                // notify client who sent this transaction to us
+                                NetworkServer.getClient(pendingTx.senderAddress)?.sendData(ProtocolMessageCode.rejected, data);
+                            }
+                        }
                         break;
 
                     case RejectedCode.TransactionDuplicate:
-                        Logging.warn("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
-                        // All good, remove tx from pending transactions
-                        PendingTransactions.remove(rej.data);
-                        throw new NotImplementedException();
+                        {
+                            Logging.warn("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
+                            // All good
+                            PendingTransactions.increaseReceivedCount(rej.data, endpoint.serverWalletAddress);
+                            var pendingTx = PendingTransactions.getPendingTransaction(rej.data);
+                            if (pendingTx?.senderAddress != null)
+                            {
+                                // notify client who sent this transaction to us
+                                NetworkServer.getClient(pendingTx.senderAddress)?.sendData(ProtocolMessageCode.rejected, data);
+                            }
+                        }
                         break;
 
                     default:
