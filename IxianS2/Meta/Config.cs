@@ -116,6 +116,7 @@ namespace S2.Meta
             Console.WriteLine("    --disableWebStart\t Disable running http://localhost:8081 on startup");
             Console.WriteLine("    --checksumLock\t\t Sets the checksum lock for seeding checksums - useful for custom networks.");
             Console.WriteLine("    --verboseOutput\t\t Starts node with verbose output.");
+            Console.WriteLine("    --networkType\t\t mainnet, testnet or regtest.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
@@ -160,6 +161,26 @@ namespace S2.Meta
             return "";
         }
 
+        private static NetworkType parseNetworkTypeValue(string value)
+        {
+            NetworkType netType;
+            value = value.ToLower();
+            switch (value)
+            {
+                case "mainnet":
+                    netType = NetworkType.main;
+                    break;
+                case "testnet":
+                    netType = NetworkType.test;
+                    break;
+                case "regtest":
+                    netType = NetworkType.reg;
+                    break;
+                default:
+                    throw new Exception(string.Format("Unknown network type '{0}'. Possible values are 'mainnet', 'testnet', 'regtest'", value));
+            }
+            return netType;
+        }
 
         private static void readConfigFile(string filename)
         {
@@ -257,21 +278,7 @@ namespace S2.Meta
                         checksumLock = Encoding.UTF8.GetBytes(value);
                         break;
                     case "networkType":
-                        value = value.ToLower();
-                        switch (value)
-                        {
-                            case "mainnet":
-                                networkType = NetworkType.main;
-                                break;
-                            case "testnet":
-                                networkType = NetworkType.test;
-                                break;
-                            case "regtest":
-                                networkType = NetworkType.reg;
-                                break;
-                            default:
-                                throw new Exception(string.Format("Unknown network type '{0}'. Possible values are 'mainnet', 'testnet', 'regtest'", value));
-                        }
+                        networkType = parseNetworkTypeValue(value);
                         break;
                     default:
                         // unknown key
@@ -307,10 +314,12 @@ namespace S2.Meta
 
             // testnet
             cmd_parser.Setup<bool>('t', "testnet").Callback(value => networkType = NetworkType.test).Required();
+            cmd_parser.Setup<string>("networkType").Callback(value => networkType = parseNetworkTypeValue(value)).Required();
 
             cmd_parser.Parse(args);
 
-            if (networkType == NetworkType.test)
+            if (networkType == NetworkType.test
+                || networkType == NetworkType.reg)
             {
                 serverPort = defaultTestnetServerPort;
                 apiPort = testnetApiPort;
@@ -383,19 +392,22 @@ namespace S2.Meta
 
             if (seedNode != "")
             {
-                if (networkType == NetworkType.test)
+                switch (networkType)
                 {
-                    NetworkUtils.seedTestNetNodes = new List<string[]>
-                        {
-                            new string[2] { seedNode, null }
-                        };
-                }
-                else
-                {
-                    NetworkUtils.seedNodes = new List<string[]>
-                        {
-                            new string[2] { seedNode, null }
-                        };
+                    case NetworkType.main:
+                        NetworkUtils.seedNodes = new List<string[]>
+                            {
+                                new string[2] { seedNode, null }
+                            };
+                        break;
+
+                    case NetworkType.test:
+                    case NetworkType.reg:
+                        NetworkUtils.seedTestNetNodes = new List<string[]>
+                            {
+                                new string[2] { seedNode, null }
+                            };
+                        break;
                 }
             }
         }
