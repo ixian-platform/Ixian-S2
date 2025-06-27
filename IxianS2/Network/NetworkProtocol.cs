@@ -563,7 +563,7 @@ namespace S2.Network
                     continue;
                 }
 
-                var client = Node.networkClientManagerStatic.getClient(sectorNodes[i]);
+                RemoteEndpoint client = Node.networkClientManagerStatic.getClient(sectorNodes[i]);
                 if (client != null)
                 {
                     client.addInventoryItem(iika);
