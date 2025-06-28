@@ -129,7 +129,7 @@ namespace S2
         }
 
         // Receive thread
-        protected override void recvLoop()
+        protected override void onInitialized()
         {
             sendHello();
 
