@@ -199,6 +199,11 @@ namespace S2.Network
                         handleGetTransaction(data, endpoint);
                         break;
 
+                    // return 10 random presences of the selected type
+                    case ProtocolMessageCode.getRandomPresences:
+                        handleGetRandomPresences(data, endpoint);
+                        break;
+
                     default:
                         Logging.warn("Unknown protocol message: {0}, from {1} ({2})", code, endpoint.getFullAddress(), endpoint.serverWalletAddress);
                         break;
@@ -1084,6 +1089,44 @@ namespace S2.Network
             {
                 pii.lastRequested = Clock.getTimestamp();
                 InventoryCache.Instance.processInventoryItem(pii);
+            }
+        }
+
+        static void handleGetRandomPresences(char type, RemoteEndpoint endpoint)
+        {
+            if (!endpoint.isConnected())
+            {
+                return;
+            }
+
+            List<Presence> presences = PresenceList.getPresencesByType(type);
+            int presence_count = presences.Count();
+            if (presence_count > 10)
+            {
+                Random rnd = new Random();
+                presences = presences.Skip(rnd.Next(presence_count - 10)).Take(10).ToList();
+            }
+
+            foreach (Presence presence in presences)
+            {
+                byte[][] presence_chunks = presence.getByteChunks();
+                foreach (byte[] presence_chunk in presence_chunks)
+                {
+                    endpoint.sendData(ProtocolMessageCode.updatePresence, presence_chunk, null);
+                }
+            }
+        }
+
+        static void handleGetRandomPresences(byte[] data, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream(data))
+            {
+                using (BinaryReader reader = new BinaryReader(m))
+                {
+                    char type = reader.ReadChar();
+
+                    handleGetRandomPresences(type, endpoint);
+                }
             }
         }
     }
