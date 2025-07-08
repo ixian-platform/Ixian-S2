@@ -24,12 +24,11 @@ namespace S2
         {
             string[] critical_dlls =
             {
-                "BouncyCastle.Crypto.dll",
+                "BouncyCastle.Cryptography.dll",
                 "FluentCommandLineParser.dll",
                 "Newtonsoft.Json.dll",
                 "Open.Nat.dll",
                 "SQLite-net.dll",
-                "SQLitePCLRaw.batteries_green.dll",
                 "SQLitePCLRaw.batteries_v2.dll",
                 "SQLitePCLRaw.core.dll",
                 "SQLitePCLRaw.provider.e_sqlite3.dll"
