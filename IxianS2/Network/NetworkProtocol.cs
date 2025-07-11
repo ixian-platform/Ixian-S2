@@ -522,15 +522,15 @@ namespace S2.Network
                     if (pa.type == 'R')
                     {
                         Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
+                        NetworkServer.addToInventory(['R'], iika, endpoint);
                     }
                     else if (pa.type == 'C')
                     {
                         sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
                     }
-                }
 
-                // Send this keepalive message to all subscribed clients
-                CoreProtocolMessage.broadcastEventDataMessage(NetworkEvents.Type.keepAlive, updatedPresence.wallet.addressNoChecksum, ProtocolMessageCode.updatePresence, data, updatedPresence.wallet.addressNoChecksum, endpoint);
+                    NetworkServer.addToInventorySubscribed(iika, endpoint);
+                }
             }
         }
 
@@ -601,6 +601,7 @@ namespace S2.Network
                 if (node_type == 'R')
                 {
                     Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
+                    NetworkServer.addToInventory(['R'], iika, endpoint);
                 }
                 else if (node_type == 'C')
                 {
@@ -608,7 +609,7 @@ namespace S2.Network
                 }
 
                 // Send this keepalive message to all subscribed clients
-                CoreProtocolMessage.broadcastEventDataMessage(NetworkEvents.Type.keepAlive, address.addressNoChecksum, ProtocolMessageCode.keepAlivePresence, data, address.addressNoChecksum, endpoint);
+                NetworkServer.addToInventorySubscribed(iika, endpoint);
             }
         }
 

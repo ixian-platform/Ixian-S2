@@ -1,5 +1,7 @@
 ﻿using IXICore;
+using IXICore.Inventory;
 using IXICore.Meta;
+using IXICore.Network;
 using System;
 using System.Linq;
 
@@ -36,6 +38,9 @@ namespace S2.Meta
             {
                 IxianHandler.status = NodeStatus.ready;
             }
+
+            NetworkServer.addToInventory(['C'], new InventoryItemBlock(block_header.blockChecksum, block_header.blockNum), null);
+
             Node.processPendingTransactions();
         }
     }
