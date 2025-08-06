@@ -136,7 +136,7 @@ namespace S2
             base.recvLoop();
         }
 
-        public override void disconnect()
+        protected override void disconnect()
         {
             base.disconnect();
             tcpClient.Close();
