@@ -35,7 +35,6 @@ namespace S2.Meta
 
         public Node()
         {
-            CoreConfig.simultaneousConnectedNeighbors = 6;
             IxianHandler.enableNetworkServer = true;
             IxianHandler.init(Config.version, this, Config.networkType, true, Config.checksumLock);
             init();
@@ -69,11 +68,11 @@ namespace S2.Meta
 
             InventoryCache.init(new InventoryCacheClient(tiv));
 
-            networkClientManagerRandomized = new NetworkClientManagerRandomized(CoreConfig.simultaneousConnectedNeighbors);
+            networkClientManagerRandomized = new NetworkClientManagerRandomized(Config.maxRelayMasterNodesToConnectTo);
 
             NetworkClientManager.init(networkClientManagerRandomized);
 
-            networkClientManagerStatic = new NetworkClientManagerStatic(CoreConfig.simultaneousConnectedNeighbors);
+            networkClientManagerStatic = new NetworkClientManagerStatic(Config.maxRelaySectorNodesToConnectTo);
 
             RelaySectors.init(CoreConfig.relaySectorLevels, null);
 

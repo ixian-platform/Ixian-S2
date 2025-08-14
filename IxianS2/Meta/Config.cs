@@ -45,7 +45,7 @@ namespace S2.Meta
         public static string externalIp = "";
 
         // Read-only values
-        public static readonly string version = "xs2c-0.9.1"; // S2 Node version
+        public static readonly string version = "xs2c-0.9.2-dev"; // S2 Node version
 
         public static readonly string checkVersionUrl = "https://resources.ixian.io/s2-update.txt";
         public static readonly int checkVersionSeconds = 6 * 60 * 60; // 6 hours
@@ -77,6 +77,7 @@ namespace S2.Meta
         public static string blockNotifyCommand = "";
 
 
+        public static int maxRelayMasterNodesToConnectTo = 6;
         public static int maxRelaySectorNodesToRequest = 20;
         public static int maxRelaySectorNodesToConnectTo = 10;
 
