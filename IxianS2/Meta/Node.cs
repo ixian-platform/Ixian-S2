@@ -35,6 +35,7 @@ namespace S2.Meta
 
         public Node()
         {
+            CoreConfig.device_id = [1];
             IxianHandler.enableNetworkServer = true;
             IxianHandler.init(Config.version, this, Config.networkType, true, Config.checksumLock);
             init();
@@ -66,13 +67,13 @@ namespace S2.Meta
             // Init TIV
             tiv = new TransactionInclusion(new S2TransactionInclusionCallbacks(), true);
 
-            InventoryCache.init(new InventoryCacheClient(tiv));
+            InventoryCache.init(new InventoryCacheS2(tiv));
 
             networkClientManagerRandomized = new NetworkClientManagerRandomized(Config.maxRelayMasterNodesToConnectTo);
 
             NetworkClientManager.init(networkClientManagerRandomized);
 
-            networkClientManagerStatic = new NetworkClientManagerStatic(Config.maxRelaySectorNodesToConnectTo);
+            networkClientManagerStatic = new NetworkClientManagerStatic(Config.maxRelaySectorNodesToConnectTo, false);
 
             RelaySectors.init(CoreConfig.relaySectorLevels, null);
 
@@ -288,16 +289,7 @@ namespace S2.Meta
                     }
                 }
 
-                using (MemoryStream mw = new MemoryStream())
-                {
-                    using (BinaryWriter writer = new BinaryWriter(mw))
-                    {
-                        writer.WriteIxiVarInt(IxianHandler.primaryWalletAddress.sectorPrefix.Length);
-                        writer.Write(IxianHandler.primaryWalletAddress.sectorPrefix);
-                        writer.WriteIxiVarInt(Config.maxRelaySectorNodesToRequest);
-                        NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getSectorNodes, mw.ToArray(), null);
-                    }
-                }
+                CoreProtocolMessage.fetchSectorNodes(IxianHandler.primaryWalletAddress, Config.maxRelaySectorNodesToRequest);
 
                 ProtocolMessage.clearOldData();
             }
@@ -315,6 +307,16 @@ namespace S2.Meta
 
         static public void stop()
         {
+            if (!running)
+            {
+                Logging.stop();
+                IxianHandler.status = NodeStatus.stopped;
+                return;
+            }
+
+            Logging.info("Stopping node...");
+            running = false;
+
             Program.noStart = true;
             IxianHandler.forceShutdown = true;
 
@@ -359,6 +361,10 @@ namespace S2.Meta
             // Stop the network server
             NetworkServer.stopNetworkOperations();
 
+            IxianHandler.status = NodeStatus.stopped;
+
+            Logging.info("Node stopped");
+
             // Stop the console stats screen
             // Console screen has a thread running even if we are in verbose mode
             statsConsoleScreen.stop();
@@ -380,13 +386,26 @@ namespace S2.Meta
         // Perform periodic cleanup tasks
         private static void performMaintenance()
         {
-            while (running)
+            try
             {
-                // Sleep a while to prevent cpu usage
-                Thread.Sleep(1000);
+                while (running)
+                {
+                    // Sleep a while to prevent cpu usage
+                    Thread.Sleep(1000);
 
-                // Cleanup the presence list
-                PresenceList.performCleanup();
+                    try
+                    {
+                        // Cleanup the presence list
+                        PresenceList.performCleanup();
+                    }
+                    catch (Exception e)
+                    {
+                        Logging.error("Exception in performMaintenance " + e);
+                    }
+                }
+            }
+            catch (ThreadInterruptedException)
+            {
             }
         }
 

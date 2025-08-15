@@ -760,7 +760,7 @@ namespace S2.Network
             if (IxianHandler.primaryWalletAddress.sectorPrefix.SequenceEqual(prefix))
             {
                 List<Peer> peers = new();
-                var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToConnectTo);
+                var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToConnectTo + 1);
                 foreach (var relay in relays)
                 {
                     var p = PresenceList.getPresenceByAddress(relay);
@@ -895,11 +895,19 @@ namespace S2.Network
                         NetworkClientManager.recalculateLocalTimeDifference();
 
                         // Get random presences
-                        if (node_type == 'M' || node_type == 'H')
+                        if (node_type == 'M' || node_type == 'H' || node_type == 'R')
                         {
                             endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'M' });
                             endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'H' });
                             CoreProtocolMessage.subscribeToEvents(endpoint);
+                        }
+
+                        if (node_type == 'M' || node_type == 'H')
+                        {
+                            if (Node.networkClientManagerStatic.clientsToConnectTo.Count < 2)
+                            {
+                                CoreProtocolMessage.fetchSectorNodes(IxianHandler.primaryWalletAddress, Config.maxRelaySectorNodesToRequest, endpoint);
+                            }
                         }
                     }
                 }
