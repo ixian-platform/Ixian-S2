@@ -1,39 +1,125 @@
-# Ixian S2
-The Ixian S2 project aims to implement a decentralized, trustless data transmission and streaming network on top of the Ixian-DLT cryptocurrency. The goal of the S2 project is to provide a platform for the next generation of decentralized services which are easy to integrate into both existing and new projects, and provide options for fair monetization of services and content.
+﻿# Ixian S2
 
-## Development branches
+**Ixian S2** is the decentralized, trustless **data transmission and streaming layer** of the [Ixian Platform](https://www.ixian.io).
+It enables **real-time communication, presence-based discovery, and streaming services** on top of [Ixian DLT](https://github.com/ixian-platform/Ixian-DLT).
 
-There are two main development branches:
-* **master**: This branch is used to build the binaries for the latest stable release of Ixian S2. It should change slowly and be quite well-tested. This is also the default branch for anyone who wishes to build their Ixian software from source.
-* **development**: This is the main development branch. The branch might not always be kept bug-free, if an extensive new feature is being worked on. If you are simply looking to build a current binary yourself, please use one of the release tags which will be associated with the master branch.
+S2 is designed for the next generation of decentralized applications, from **secure messaging** to **IoT networks**,
+with built-in support for **scalable presence** and **fair monetization models**.
 
-## Documentation
+---
 
-You can find documentation on how to build, APIs and other documents on [Ixian Documentation Pages](https://docs.ixian.io).
+## 🚀 Why Ixian S2?
 
-## Get in touch / Contributing
+Ixian S2 is built to replace centralized communication servers with a **decentralized overlay network** that scales.
 
-If you feel like you can contribute to the project, or have questions or comments, you can get in touch with the team through Discord: https://discord.gg/pdJNVhv
+* 🕸️ **Presence-based Communication** - Users and devices are discovered via **cryptographic addresses**, not IP or DNS.
+  Presence packets (signed and time-limited) ensure authenticity and freshness without SSL/TLS or certificate authorities.
 
-## Pull requests
+* 🕊️ **Starling Presence Scaling Model** - A sector-based scaling architecture where S2 nodes are grouped into relay sectors.
+  This enables efficient lookups, low overhead, and scalability to trillions of devices.
 
-If you would like to send an improvement or bugfix to this repository, but without permanently joining the team, follow these approximate steps:
+* 💰 **Incentives for Node Operators** - S2 nodes are economically incentivized.
+  Operators earn **relay rewards** for transactions they forward into the DLT network, via a **dual fee model** (DLT network fee + S2 relay fee).
+  This ensures fair distribution, aligned incentives, and long-term sustainability.
+
+* 🔒 **Secure & Trustless** - Every connection is authenticated cryptographically.
+  Identities, presence, and discovery are self-authenticated, making external trust systems unnecessary.
+
+* ⚡ **Low Latency, High Throughput** - Optimized for **real-time streaming, messaging, and dApps**, even under global load.
+
+* ♻️ **Resilient by Design** - Decentralized, fault-tolerant architecture with no downtime or single points of failure.
+
+---
+
+## 🔎 How Client Discovery Works in Ixian
+
+Unlike traditional networks where discovery relies on DNS/IP, SSL certificates and central directories, Ixian uses
+**cryptographic addresses** and **presence packets**. This eliminates the need for external trust systems.
+
+**Lifecycle of a client lookup:**
+
+1. **Initiation** - User A wants to connect to User B, knowing only B's **Ixian cryptographic address**.
+2. **Sector Resolution** - User A sends a *Get Sector* request to its connected S2 node. The S2 node queries the **Ixian DLT**
+to determine which sector User B belongs to (DLT tracks all active S2 base presences).
+3. **Presence Request** - User A queries one of the S2 nodes in User B's sector for User B's **presence packet**.
+4. **Presence Packet** - If User B is online, the S2 node returns B's signed presence packet, which contains:
+
+   * Timestamp (to prevent replay and confirm freshness),
+   * Contact details (IP/transport endpoint, with support for non-IP in the future),
+   * Signature from User B's private key proving authenticity.
+5. **Communication Setup** - User A now knows how to communicate with User B:
+
+   * Directly (if reachable and if User B chooses to reveal their direct communication channel publicly),
+   * Or indirectly (via relay/TURN functionality provided by S2 nodes if behind NAT/firewall).
+6. **Keep-alive cycle** - User B must refresh its presence every few minutes with a new timestamp + signature, or the presence
+expires automatically.
+
+---
+
+### ✅ Why It Matters
+
+* 🔑 **No centralized SSL/TLS infrastructure required** - trust comes from cryptographic signatures, not certificate authorities.
+* 🕸️ **Lookup by cryptographic address** - eliminates DNS and central directories.
+* ⚡ **Scalable by design** - the Starling model and sectorized presence make discovery efficient, even at **trillion-device
+scale**.
+* 🔒 **Always authentic, always fresh** - signatures + expiry guarantee that presence data can't be spoofed or reused.
+* ♻️ **Future-ready** - supports both Internet-based IP and non-IP addressing models.
+
+**Ixian S2 turns discovery and communication into a cryptographically verifiable, decentralized service - future-proof by
+design.**
+
+---
+
+## 📚 Documentation
+
+👉 Full build guides, API references, and integration docs are available at:
+[https://docs.ixian.io](https://docs.ixian.io)
+
+---
+
+## 🔗 Related Repositories
+
+* [Ixian-Core](https://github.com/ixian-platform/Ixian-Core) - SDK and shared functionality
+* [Ixian-DLT](https://github.com/ixian-platform/Ixian-DLT) - Blockchain ledger and consensus layer
+* [Ixian-S2](https://github.com/ixian-platform/Ixian-S2) - Decentralized streaming & messaging (this repository)
+* [Spixi](https://github.com/ixian-platform/Spixi) - Secure messenger and wallet app
+* [QuIXI](https://github.com/ixian-platform/QuIXI) - Quick integration toolkit for Ixian Platform
+
+---
+
+## 🌱 Development Branches
+
+* **master** - Stable, production-ready releases
+* **development** - Active development, may contain unfinished features
+
+For reproducible builds, always use the latest **release tag** on `master`.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions from developers, integrators, and builders.
 
 1. Fork this repository
-2. Create a branch (preferably with a name that describes the change)
-3. Create commits (the commit messages should contain some information on what and why was changed)
-4. Create a pull request to this repository for review and inclusion.
+2. Create a feature branch ('feature/my-change')
+3. Commit with clear messages
+4. Open a Pull Request for review
 
-## About Ixian
+Join the discussion on **[Discord](https://discord.gg/pdJNVhv)**.
 
-Ixian DLT is a revolutionary blockchain that brings several innovative advantages, such as processing a high volume of micro-transactions quickly while consuming a low amount of processing power, disk space and energy.
+---
 
-**Homepage**: https://www.ixian.io
+## 🌍 Community & Links
 
-**Discord**: https://discord.gg/pdJNVhv
+* **Website**: [www.ixian.io](https://www.ixian.io)
+* **Docs**: [docs.ixian.io](https://docs.ixian.io)
+* **Discord**: [discord.gg/pdJNVhv](https://discord.gg/pdJNVhv)
+* **Telegram**: [t.me/ixian\_official\_ENG](https://t.me/ixian_official_ENG)
+* **Bitcointalk**: [Forum Thread](https://bitcointalk.org/index.php?topic=4631942.0)
+* **GitHub**: [ixian-platform](https://www.github.com/ixian-platform)
 
-**Bitcointalk**: https://bitcointalk.org/index.php?topic=4631942.0
+---
 
-**Documentation**: https://docs.ixian.io
+## 📜 License
 
-**GitHub**: https://www.github.com/ProjectIxian
+Licensed under the [MIT License](LICENSE).
