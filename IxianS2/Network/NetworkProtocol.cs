@@ -773,17 +773,15 @@ namespace S2.Network
                 }
                 Node.networkClientManagerStatic.setClientsToConnectTo(peers);
             }
-            else
+
+            // Forward sector nodes to client
+            var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getSectorNodes, prefix);
+            if (pendingRequest != default)
             {
-                // Forward sector nodes to client
-                var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getSectorNodes, prefix);
-                if (pendingRequest != default)
+                var relays = RelaySectors.Instance.getSectorNodes(prefix, nodeCount);
+                foreach (var prEndpoint in pendingRequest.endpoints)
                 {
-                    var relays = RelaySectors.Instance.getSectorNodes(prefix, nodeCount);
-                    foreach (var prEndpoint in pendingRequest.endpoints)
-                    {
-                        CoreProtocolMessage.sendSectorNodes(prefix, relays, prEndpoint);
-                    }
+                    CoreProtocolMessage.sendSectorNodes(prefix, relays, prEndpoint);
                 }
             }
         }
