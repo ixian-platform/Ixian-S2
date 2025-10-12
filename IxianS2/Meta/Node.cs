@@ -391,10 +391,12 @@ namespace S2.Meta
                 while (running)
                 {
                     // Sleep a while to prevent cpu usage
-                    Thread.Sleep(1000);
+                    Thread.Sleep(2500);
 
                     try
                     {
+                        PeerStorage.savePeersFile();
+
                         // Cleanup the presence list
                         PresenceList.performCleanup();
                     }

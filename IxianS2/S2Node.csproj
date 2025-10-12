@@ -6,6 +6,19 @@
     <AssemblyName>IxianS2</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
+  
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
+  
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('macOS'))">
+    <DefineConstants>$(DefineConstants);MACCATALYST</DefineConstants>
+  </PropertyGroup>
+  
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>x64</PlatformTarget>
     <DefineConstants>TRACE;DEBUG;S2_BUILD</DefineConstants>

@@ -1017,7 +1017,7 @@ namespace S2.Network
                         byte[] item_bytes = reader.ReadBytes((int)len);
                         InventoryItem item = InventoryCache.decodeInventoryItem(item_bytes);
 
-                        // First update endpoint blockheights
+                        // First update endpoint blockheights and pending transactions
                         switch (item.type)
                         {
                             case InventoryItemTypes.transaction:
@@ -1045,12 +1045,13 @@ namespace S2.Network
                                     if (PresenceList.getPresenceByAddress(iika.address) != null)
                                     {
                                         ka_list.Add(iika);
-                                        pii.lastRequested = Clock.getTimestamp(); 
-                                    } else
+                                        pii.lastRequested = Clock.getTimestamp();
+                                    }
+                                    else
                                     {
                                         InventoryCache.Instance.processInventoryItem(pii);
                                     }
-                                break;
+                                    break;
 
                                 case InventoryItemTypes.transaction:
                                     tx_list.Add(item.hash);
@@ -1107,7 +1108,7 @@ namespace S2.Network
                 return;
             }
 
-            List<Presence> presences = PresenceList.getPresencesByType(type);
+            List<Presence> presences = PresenceList.getPresencesByType(type, 20);
             int presence_count = presences.Count();
             if (presence_count > 10)
             {
