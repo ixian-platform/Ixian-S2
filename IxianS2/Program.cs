@@ -27,18 +27,14 @@ namespace S2
                 "BouncyCastle.Cryptography.dll",
                 "FluentCommandLineParser.dll",
                 "Newtonsoft.Json.dll",
-                "Open.Nat.dll",
-                "SQLite-net.dll",
-                "SQLitePCLRaw.batteries_v2.dll",
-                "SQLitePCLRaw.core.dll",
-                "SQLitePCLRaw.provider.e_sqlite3.dll"
+                "Open.Nat.dll"
             };
 
             foreach (string critical_dll in critical_dlls)
             {
                 if (!File.Exists(critical_dll))
                 {
-                    Logging.error(String.Format("Missing '{0}' in the program folder. Possibly the IXIAN archive was corrupted or incorrectly installed. Please re-download the archive from https://www.ixian.io!", critical_dll));
+                    Logging.error("Missing '{0}' in the program folder. Possibly the IXIAN archive was corrupted or incorrectly installed. Please re-download the archive from https://www.ixian.io!", critical_dll);
                     Logging.info("Press ENTER to exit.");
                     Console.ReadLine();
                     Environment.Exit(-1);
@@ -53,14 +49,14 @@ namespace S2
             bool success = false;
             if ((installed_vc_redist is int && (int)installed_vc_redist > 0) || (installed_vc_redist_debug is int && (int)installed_vc_redist_debug > 0))
             {
-                Logging.info("Visual C++ 2017 (v141) redistributable is already installed.");
+                Logging.info("Visual C++ 2015-2022 (v170) redistributable is already installed.");
                 success = true;
             }
             else
             {
                 if (!File.Exists("vc_redist.x64.exe"))
                 {
-                    Logging.warn("The VC++2017 redistributable file is not found. Please download the v141 version of the Visual C++ 2017 redistributable and install it manually!");
+                    Logging.warn("The VC++ 2015-2022 redistributable file is not found. Please download the v170 version of the Visual C++ 2017 redistributable and install it manually!");
                     Logging.flush();
                     Console.WriteLine("You can download it from this URL:");
                     Console.WriteLine("https://visualstudio.microsoft.com/downloads/");
@@ -71,7 +67,7 @@ namespace S2
                     Console.WriteLine();
                     Console.WriteLine();
                     Console.WriteLine();
-                    Console.WriteLine("NOTICE: In order to run this IXIAN node, Visual Studio 2017 Redistributable (v141) must be installed.");
+                    Console.WriteLine("NOTICE: In order to run this IXIAN node, Visual Studio 2015-2022 Redistributable (v170) must be installed.");
                     Console.WriteLine("This can be done automatically by IXIAN, or, you can install it manually from this URL:");
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("https://visualstudio.microsoft.com/downloads/");
@@ -79,13 +75,13 @@ namespace S2
                     Console.WriteLine("The installer may open a UAC (User Account Control) prompt. Please verify that the executable is signed by Microsoft Corporation before allowing it to install!");
                     Console.ResetColor();
                     Console.WriteLine();
-                    Console.WriteLine("Automatically install Visual C++ 2017 redistributable? (Y/N): ");
+                    Console.WriteLine("Automatically install Visual C++ 2015-2022 redistributable? (Y/N): ");
                     ConsoleKeyInfo k = Console.ReadKey();
                     Console.WriteLine();
                     Console.WriteLine();
                     if (k.Key == ConsoleKey.Y)
                     {
-                        Logging.info("Installing Visual C++ 2017 (v141) redistributable...");
+                        Logging.info("Installing Visual C++ 2015-2022 (v170) redistributable...");
                         ProcessStartInfo installer = new ProcessStartInfo("vc_redist.x64.exe");
                         installer.Arguments = "/install /passive /norestart";
                         installer.LoadUserProfile = false;
@@ -105,8 +101,8 @@ namespace S2
                                 {
                                     Logging.warn("Terminating installer process...");
                                     p.Kill();
-                                    Logging.warn(String.Format("Process output: {0}", p.StandardOutput.ReadToEnd()));
-                                    Logging.warn(String.Format("Process error output: {0}", p.StandardError.ReadToEnd()));
+                                    Logging.warn("Process output: {0}", p.StandardOutput.ReadToEnd());
+                                    Logging.warn("Process error output: {0}", p.StandardError.ReadToEnd());
                                 }
                             }
                         }
@@ -114,22 +110,22 @@ namespace S2
                         installed_vc_redist_debug = Microsoft.Win32.Registry.GetValue("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\debug\\x64", "Installed", 0);
                         if ((installed_vc_redist is int && (int)installed_vc_redist > 0) || (installed_vc_redist_debug is int && (int)installed_vc_redist_debug > 0))
                         {
-                            Logging.info("Visual C++ 2017 (v141) redistributable has installed successfully.");
+                            Logging.info("Visual C++ 2015-2022 (v1702015-2022) redistributable has installed successfully.");
                             success = true;
                         }
                         else
                         {
-                            Logging.info("Visual C++ 2017 has failed to install. Please review the error text (if any) and install manually:");
-                            Logging.warn(String.Format("Process exit code: {0}.", p.ExitCode));
-                            Logging.warn(String.Format("Process output: {0}", p.StandardOutput.ReadToEnd()));
-                            Logging.warn(String.Format("Process error output: {0}", p.StandardError.ReadToEnd()));
+                            Logging.info("Visual C++ 2015-2022 has failed to install. Please review the error text (if any) and install manually:");
+                            Logging.warn("Process exit code: {0}.", p.ExitCode);
+                            Logging.warn("Process output: {0}", p.StandardOutput.ReadToEnd());
+                            Logging.warn("Process error output: {0}", p.StandardError.ReadToEnd());
                         }
                     }
                 }
             }
             if (!success)
             {
-                Logging.info("IXIAN requires the Visual Studio 2017 runtime for normal operation. Please ensure it is installed and then restart the program!");
+                Logging.info("IXIAN requires the Visual Studio 2015-2022 runtime for normal operation. Please ensure it is installed and then restart the program!");
                 Logging.info("Press ENTER to exit.");
                 Console.ReadLine();
                 Environment.Exit(-1);

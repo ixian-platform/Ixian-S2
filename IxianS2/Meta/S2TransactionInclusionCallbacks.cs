@@ -1,4 +1,5 @@
 ﻿using IXICore;
+using IXICore.Activity;
 using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
@@ -21,7 +22,7 @@ namespace S2.Meta
                 PendingTransactions.remove(txid);
             }
 
-            ActivityStorage.updateStatus(txid, status, 0);
+            Node.activityStorage.updateStatus(txid, status, 0);
         }
 
         public void receivedBlockHeader(Block block_header, bool verified)

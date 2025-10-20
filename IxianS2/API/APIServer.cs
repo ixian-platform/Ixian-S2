@@ -1,5 +1,5 @@
 ﻿using IXICore;
-using IXICore.Network;
+using IXICore.Activity;
 using Newtonsoft.Json;
 using S2.Meta;
 using System;
@@ -10,10 +10,10 @@ namespace S2
 {
     class APIServer : GenericAPIServer
     {
-        public APIServer(List<string> listen_URLs, Dictionary<string, string> authorized_users = null, List<string> allowed_IPs = null)
+        public APIServer(List<string> listen_URLs, Dictionary<string, string> authorized_users = null, List<string> allowed_IPs = null, IActivityStorage activityStorage = null)
         {
             // Start the API server
-            start(listen_URLs, authorized_users, allowed_IPs);
+            start(listen_URLs, authorized_users, allowed_IPs, activityStorage);
         }
 
         protected override bool processRequest(HttpListenerContext context, string methodName, Dictionary<string, object> parameters)

@@ -1,4 +1,5 @@
 ﻿using IXICore;
+using IXICore.Activity;
 using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
@@ -11,7 +12,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using Activity = IXICore.Meta.Activity;
 
 namespace S2.Meta
 {
@@ -32,6 +32,8 @@ namespace S2.Meta
 
         public static NetworkClientManagerStatic networkClientManagerStatic = null;
         public static NetworkClientManagerRandomized networkClientManagerRandomized = null;
+
+        public static IActivityStorage activityStorage;
 
         public Node()
         {
@@ -215,7 +217,8 @@ namespace S2.Meta
             // Start the network queue
             NetworkQueue.start();
 
-            ActivityStorage.prepareStorage();
+            activityStorage = new ActivityStorage(Path.Combine(Environment.CurrentDirectory, "activity"), 32 << 20, 0);
+            activityStorage.prepareStorage(true);
 
             if (Config.apiBinds.Count == 0)
             {
@@ -223,7 +226,7 @@ namespace S2.Meta
             }
 
             // Start the HTTP JSON API server
-            apiServer = new APIServer(Config.apiBinds, Config.apiUsers, Config.apiAllowedIps);
+            apiServer = new APIServer(Config.apiBinds, Config.apiUsers, Config.apiAllowedIps, activityStorage);
 
             if (IXICore.Platform.onWindows() == true && !Config.disableWebStart)
             {
@@ -342,7 +345,7 @@ namespace S2.Meta
                 maintenanceThread = null;
             }
 
-            ActivityStorage.stopStorage();
+            activityStorage.stopStorage();
 
             // Stop the network queue
             NetworkQueue.stop();
@@ -373,7 +376,9 @@ namespace S2.Meta
         // Cleans the storage cache and logs
         public static bool cleanCacheAndLogs()
         {
-            ActivityStorage.deleteCache();
+            activityStorage.stopStorage();
+            activityStorage.deleteData();
+            activityStorage.prepareStorage(false);
 
             PeerStorage.deletePeersFile();
 
@@ -498,73 +503,76 @@ namespace S2.Meta
 
         public static void addTransactionToActivityStorage(Transaction transaction)
         {
-            Activity activity = null;
-            int type = -1;
+            ActivityObject activity = null;
+            ActivityType type;
             IxiNumber value = transaction.amount;
-            List<byte[]> wallet_list = null;
+            Dictionary<byte[], List<byte[]>> wallet_list = null;
             Address wallet = null;
             Address primary_address = transaction.pubKey;
-            if (IxianHandler.getWalletStorage().isMyAddress(primary_address))
+
+            ActivityStatus status = ActivityStatus.Pending;
+            if (transaction.applied > 0)
             {
+                status = ActivityStatus.Final;
+            }
+
+            if (IxianHandler.isMyAddress(primary_address))
+            {
+                // We are the sender
                 wallet = primary_address;
-                type = (int)ActivityType.TransactionSent;
+                type = ActivityType.TransactionSent;
                 if (transaction.type == (int)Transaction.Type.PoWSolution)
                 {
-                    type = (int)ActivityType.MiningReward;
+                    type = ActivityType.MiningReward;
                     value = ConsensusConfig.calculateMiningRewardForBlock(transaction.powSolution.blockNum);
                 }
+                else if (transaction.type == (int)Transaction.Type.RegName)
+                {
+                    type = ActivityType.IxiName;
+                }
+
+                activity = new ActivityObject(IxianHandler.getWalletStorageBySecondaryAddress(primary_address).getSeedHash(),
+                                wallet,
+                                transaction.id,
+                                transaction.toList.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.amount),
+                                type,
+                                null,
+                                value,
+                                transaction.timeStamp,
+                                status,
+                                transaction.applied);
+                activityStorage.insertActivity(activity);
             }
             else
             {
-                wallet_list = IxianHandler.getWalletStorage().extractMyAddressesFromAddressList(transaction.toList);
+                wallet_list = IxianHandler.extractMyAddressesFromAddressList(transaction.toList);
                 if (wallet_list != null)
                 {
-                    type = (int)ActivityType.TransactionReceived;
+                    // We are the recipient
+                    type = ActivityType.TransactionReceived;
                     if (transaction.type == (int)Transaction.Type.StakingReward)
                     {
-                        type = (int)ActivityType.StakingReward;
+                        type = ActivityType.StakingReward;
                     }
-                }
-            }
-            if (type != -1)
-            {
-                int status = (int)ActivityStatus.Pending;
-                if (transaction.applied > 0)
-                {
-                    status = (int)ActivityStatus.Final;
-                }
-                if (wallet_list != null)
-                {
-                    foreach (var entry in wallet_list)
+
+                    foreach (var extractedWallet in wallet_list)
                     {
-                        activity = new Activity(IxianHandler.getWalletStorage().getSeedHash(),
-                                                Base58Check.Base58CheckEncoding.EncodePlain(entry),
-                                                Base58Check.Base58CheckEncoding.EncodePlain(primary_address.addressNoChecksum),
-                                                transaction.toList,
-                                                type,
-                                                transaction.id,
-                                                transaction.toList[new Address(entry)].amount.ToString(),
-                                                transaction.timeStamp,
-                                                status,
-                                                transaction.applied,
-                                                transaction.getTxIdString());
-                        ActivityStorage.insertActivity(activity);
+                        foreach (var addressBytes in extractedWallet.Value)
+                        {
+                            Address address = new Address(addressBytes);
+                            activity = new ActivityObject(extractedWallet.Key,
+                                                          address,
+                                                          transaction.id,
+                                                          transaction.fromList.ToDictionary(kvp => new Address(transaction.pubKey.addressNoChecksum, kvp.Key), kvp => kvp.Value),
+                                                          type,
+                                                          null,
+                                                          transaction.toList[address].amount,
+                                                          transaction.timeStamp,
+                                                          status,
+                                                          transaction.applied);
+                            activityStorage.insertActivity(activity);
+                        }
                     }
-                }
-                else if (wallet != null)
-                {
-                    activity = new Activity(IxianHandler.getWalletStorage().getSeedHash(),
-                                            Base58Check.Base58CheckEncoding.EncodePlain(wallet.addressNoChecksum),
-                                            Base58Check.Base58CheckEncoding.EncodePlain(primary_address.addressNoChecksum),
-                                            transaction.toList,
-                                            type,
-                                            transaction.id,
-                                            value.ToString(),
-                                            transaction.timeStamp,
-                                            status,
-                                            transaction.applied,
-                                            transaction.getTxIdString());
-                    ActivityStorage.insertActivity(activity);
                 }
             }
         }
@@ -592,7 +600,7 @@ namespace S2.Meta
                     // if transaction expired, remove it from pending transactions
                     if (last_block_height > ConsensusConfig.getRedactedWindowSize() && t.blockHeight < last_block_height - ConsensusConfig.getRedactedWindowSize())
                     {
-                        ActivityStorage.updateStatus(t.id, ActivityStatus.Error, 0);
+                        activityStorage.updateStatus(t.id, ActivityStatus.Error, 0);
                         PendingTransactions.pendingTransactions.RemoveAll(x => x.transaction.id.SequenceEqual(t.id));
                         continue;
                     }
