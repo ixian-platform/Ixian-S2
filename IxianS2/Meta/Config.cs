@@ -45,7 +45,7 @@ namespace S2.Meta
         public static string externalIp = "";
 
         // Read-only values
-        public static readonly string version = "xs2c-0.9.3a"; // S2 Node version
+        public static readonly string version = "xs2c-0.9.3b"; // S2 Node version
 
         public static readonly string checkVersionUrl = "https://resources.ixian.io/s2-update.txt";
         public static readonly int checkVersionSeconds = 6 * 60 * 60; // 6 hours
@@ -147,7 +147,6 @@ namespace S2.Meta
             Console.WriteLine("    maxLogCount\t\t Specify maximum number of log files (same as --maxLogCount CLI)");
             Console.WriteLine("    logVerbosity\t Sets log verbosity (same as --logVerbosity CLI)");
             Console.WriteLine("    disableWebStart\t 1 to disable running http://localhost:8081 on startup (same as --disableWebStart CLI)");
-            Console.WriteLine("    walletNotify\t Execute command when a wallet transaction changes");
             Console.WriteLine("    blockNotify\t Execute command when the block changes");
 
             return "";
@@ -265,9 +264,6 @@ namespace S2.Meta
                         {
                             disableWebStart = true;
                         }
-                        break;
-                    case "walletNotify":
-                        CoreConfig.walletNotifyCommand = value;
                         break;
                     case "blockNotify":
                         Config.blockNotifyCommand = value;

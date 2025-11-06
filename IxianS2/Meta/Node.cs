@@ -653,10 +653,5 @@ namespace S2.Meta
         {
             throw new NotImplementedException();
         }
-
-        public override void onSignerSolutionFound()
-        {
-            throw new NotImplementedException();
-        }
     }
 }
