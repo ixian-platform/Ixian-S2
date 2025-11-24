@@ -2,7 +2,6 @@
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Utils;
-using S2.Network;
 using System;
 using System.Linq;
 using System.Threading;
@@ -161,11 +160,11 @@ namespace S2.Meta
             writeLine("");
 
             float recvMB = 0;
-            if(StreamProcessor.bytesReceived > 0)
-                recvMB = (StreamProcessor.bytesReceived / 1024f) / 1024f;
+            if(CoreProtocolMessage.bytesForRelayReceived > 0)
+                recvMB = (CoreProtocolMessage.bytesForRelayReceived / 1024f) / 1024f;
             float sentMB = 0;
-            if (StreamProcessor.bytesSent > 0)
-                sentMB = (StreamProcessor.bytesSent / 1024f) / 1024f;
+            if (CoreProtocolMessage.bytesRelayed > 0)
+                sentMB = (CoreProtocolMessage.bytesRelayed / 1024f) / 1024f;
 
             writeLine(" S2 Data Received:     {0:F2} MB", recvMB);
             writeLine(" S2 Data Sent:         {0:F2} MB", sentMB);

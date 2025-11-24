@@ -16,17 +16,11 @@ namespace S2.Network
 
     class StreamProcessor
     {
-        static List<StreamMessage> messages = new List<StreamMessage>(); // List that stores stream messages
         static List<StreamTransaction> transactions = new List<StreamTransaction>(); // List that stores stream transactions
-
-        public static ulong bytesReceived = 0; // S2 data received
-        public static ulong bytesSent = 0; // S2 data sent
 
         // Called when receiving S2 data from clients
         public static void receiveData(byte[] bytes, RemoteEndpoint endpoint)
         {
-            bytesReceived += (ulong)bytes.Length;
-
             string endpoint_wallet_string = endpoint.presence.wallet.ToString();
             Logging.info(string.Format("Receiving S2 data from {0}", endpoint_wallet_string));
 
@@ -57,10 +51,9 @@ namespace S2.Network
             if(!NetworkServer.forwardMessage(message.recipient, ProtocolMessageCode.s2data, bytes))
             {
                 // Couldn't forward the message, send failed to client
-                sendError(message.sender, message.recipient, message.id, endpoint);
+                CoreProtocolMessage.sendStreamError(message.sender, message.recipient, message.id, endpoint);
                 return;
             }
-            bytesSent += (ulong)bytes.Length;
 
             // TODO: commented for development purposes ONLY!
             /*
@@ -182,25 +175,6 @@ namespace S2.Network
         public static void update()
         {
 
-        }
-
-        // Sends an error stream message to a recipient
-        public static void sendError(Address recipient, Address sender, byte[] data, RemoteEndpoint endpoint = null)
-        {
-            StreamMessage message = new StreamMessage();
-            message.type = StreamMessageCode.error;
-            message.recipient = recipient;
-            message.sender = sender;
-            message.data = data;
-            message.encryptionType = StreamMessageEncryptionCode.none;
-
-            if(endpoint != null)
-            {
-                endpoint.sendData(ProtocolMessageCode.s2data, message.getBytes());
-            }else
-            {
-                NetworkServer.forwardMessage(recipient, ProtocolMessageCode.s2data, message.getBytes());
-            }
         }
     }
 }

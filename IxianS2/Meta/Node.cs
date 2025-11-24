@@ -608,6 +608,7 @@ namespace S2.Meta
                     if (cur_time - tx_time > 40) // if the transaction is pending for over 40 seconds, resend
                     {
                         CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, t.getBytes(true, true), null);
+
                         entry.addedTimestamp = cur_time;
                         entry.confirmedNodeList.Clear();
                     }
@@ -615,11 +616,6 @@ namespace S2.Meta
                     if (entry.confirmedNodeList.Count() > 3) // already received 3+ feedback
                     {
                         continue;
-                    }
-
-                    if (cur_time - tx_time > 20) // if the transaction is pending for over 20 seconds, send inquiry
-                    {
-                        CoreProtocolMessage.broadcastGetTransaction(t.id, 0, null, false);
                     }
 
                     idx++;
