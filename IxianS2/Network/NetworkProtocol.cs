@@ -1,4 +1,5 @@
 ﻿using IXICore;
+using IXICore.Activity;
 using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
@@ -395,17 +396,25 @@ namespace S2.Network
 
             if (endpoint.presenceAddress.type == 'C')
             {
+                // TODO if transaction already processed, send proofs back to the client
+
                 ToEntry value;
-                // do not enforce payments for now
-                Node.addTransaction(endpoint.serverWalletAddress, tx, null, true);
-                /*if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
-                    && value.amount >= tx.fee)
+                if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
+                    && value.amount >= tx.fee / 10)
                 {
-                    IxianHandler.addTransaction(tx, null, true);
+                    // Check if transaction already processed
+                    if (Node.activityStorage.getActivityById(tx.id) != null
+                        || !Node.addTransaction(endpoint.serverWalletAddress, tx, null, true))
+                    {
+                        endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TransactionDuplicate, tx.id).getBytes());
+                        return;
+                    }
+                    myTransaction = true;
                 } else
                 {
-                    endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TxInsufficientFee, tx.id).getBytes());
-                }*/
+                    endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TransactionInsufficientFee, tx.id).getBytes());
+                    return;
+                }
             }
             else
             {
@@ -415,19 +424,58 @@ namespace S2.Network
                     myTransaction = true;
                 }
 
-                var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getTransaction3, tx.pubKey.addressNoChecksum);
+                Dictionary<Address, RemoteEndpoint> clientsToSendTo = new(new AddressComparer());
+
+                var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getTransaction3, tx.id);
                 if (pendingRequest != default)
                 {
                     foreach (var client in pendingRequest.endpoints)
                     {
+                        if (client.serverWalletAddress == null)
+                        {
+                            continue;
+                        }
                         client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
                     }
                 }
 
+                Logging.info("Received new transaction {0}", Crypto.hashToString(tx.id));
+
+                // If transaction already processed
+                ActivityObject activity = Node.activityStorage.getActivityById(tx.id, null);
+                if (activity != null)
+                {
+                    if (activity.status != ActivityStatus.Final)
+                    {
+                        if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                        {
+                            PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
+                        }
+
+                        if (tx.applied != 0
+                            && tx.applied != activity.blockHeight)
+                        {
+                            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Pending, tx.applied);
+                        }
+
+                        Node.tiv.receivedNewTransaction(tx);
+                    }
+                }
+                else
+                {
+                    Node.tiv.receivedNewTransaction(tx);
+                    if (tx.timeStamp == 0)
+                    {
+                        tx.timeStamp = Clock.getTimestamp();
+                    }
+                    Node.addTransactionToActivityStorage(tx);
+                }
+
+                // TODO deprecate subscriptions when "relevant transactions" are finalized
                 var clients = getClientsSubscribedToAddress(tx.pubKey);
                 foreach (var client in clients)
                 {
-                    client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                    clientsToSendTo.AddOrReplace(client.serverWalletAddress, client);
                 }
 
                 foreach (var toEntry in tx.toList)
@@ -438,35 +486,18 @@ namespace S2.Network
                     }
                     else
                     {
-                        pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getTransaction3, toEntry.Key.addressNoChecksum);
-                        if (pendingRequest != default)
-                        {
-                            foreach (var client in pendingRequest.endpoints)
-                            {
-                                client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
-                            }
-                        }
-
                         clients = getClientsSubscribedToAddress(toEntry.Key);
                         foreach (var client in clients)
                         {
-                            client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                            clientsToSendTo.AddOrReplace(client.serverWalletAddress, client);
                         }
                     }
                 }
-            }
 
-            if (myTransaction)
-            {
-                if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                foreach (var client in clientsToSendTo.Values)
                 {
-                    PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
+                    client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
                 }
-
-                Node.tiv.receivedNewTransaction(tx);
-                Logging.info("Received new transaction {0}", Crypto.hashToString(tx.id));
-
-                Node.addTransactionToActivityStorage(tx);
             }
         }
 
@@ -797,9 +828,16 @@ namespace S2.Network
                     case RejectedCode.TransactionInsufficientFee:
                     case RejectedCode.TransactionDust:
                         {
+                            if (endpoint.presenceAddress.type != 'M'
+                                && endpoint.presenceAddress.type != 'H')
+                            {
+                                Logging.warn("Received 'rejected' message {0} {1} from non-master {2}", rej.code, Crypto.hashToString(rej.data), endpoint.getFullAddress());
+                                return;
+                            }
                             Logging.error("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
-                            // remove tx from pending transactions
-                            var pendingTx = PendingTransactions.remove(rej.data);
+
+                            PendingTransactions.increaseRejectedCount(rej.data, endpoint.serverWalletAddress);
+                            var pendingTx = PendingTransactions.getPendingTransaction(rej.data);
                             if (pendingTx?.senderAddress != null)
                             {
                                 // notify client who sent this transaction to us
@@ -810,6 +848,12 @@ namespace S2.Network
 
                     case RejectedCode.TransactionDuplicate:
                         {
+                            if (endpoint.presenceAddress.type != 'M'
+                                && endpoint.presenceAddress.type != 'H')
+                            {
+                                Logging.warn("Received 'rejected' message {0} {1} from non-master node {2}", rej.code, Crypto.hashToString(rej.data), endpoint.getFullAddress());
+                                return;
+                            }
                             Logging.warn("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
                             // All good
                             PendingTransactions.increaseReceivedCount(rej.data, endpoint.serverWalletAddress);

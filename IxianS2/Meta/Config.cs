@@ -32,6 +32,10 @@ namespace S2.Meta
         public static string configFilename = "ixian.cfg";
         public static string walletFile = "ixian.wal";
 
+        public static string activityFolderPath = "activity";
+        public static string headersFolderPath = Path.Combine(Environment.CurrentDirectory, "headers");
+        public static string logFolderPath = Environment.CurrentDirectory;
+
         public static int maxLogSize = 50;
         public static int maxLogCount = 10;
 
@@ -115,9 +119,12 @@ namespace S2.Meta
             Console.WriteLine("    --maxLogCount\t Specify maximum number of log files");
             Console.WriteLine("    --logVerbosity\t Sets log verbosity (0 = none, trace = 1, info = 2, warn = 4, error = 8)");
             Console.WriteLine("    --disableWebStart\t Disable running http://localhost:8081 on startup");
-            Console.WriteLine("    --checksumLock\t\t Sets the checksum lock for seeding checksums - useful for custom networks.");
-            Console.WriteLine("    --verboseOutput\t\t Starts node with verbose output.");
-            Console.WriteLine("    --networkType\t\t mainnet, testnet or regtest.");
+            Console.WriteLine("    --checksumLock\t Sets the checksum lock for seeding checksums - useful for custom networks.");
+            Console.WriteLine("    --verboseOutput\t Starts node with verbose output.");
+            Console.WriteLine("    --networkType\t mainnet, testnet or regtest.");
+            Console.WriteLine("    --logFolderPath\t location where to store log files.");
+            Console.WriteLine("    --headersFolderPath\t location where to store block header data.");
+            Console.WriteLine("    --activityFolderPath location where to store activity files.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
@@ -147,7 +154,10 @@ namespace S2.Meta
             Console.WriteLine("    maxLogCount\t\t Specify maximum number of log files (same as --maxLogCount CLI)");
             Console.WriteLine("    logVerbosity\t Sets log verbosity (same as --logVerbosity CLI)");
             Console.WriteLine("    disableWebStart\t 1 to disable running http://localhost:8081 on startup (same as --disableWebStart CLI)");
-            Console.WriteLine("    blockNotify\t Execute command when the block changes");
+            Console.WriteLine("    blockNotify\t\t Execute command when the block changes");
+            Console.WriteLine("    logFolderPath\t location where to store log files.");
+            Console.WriteLine("    headersFolderPath\t location where to store block header data.");
+            Console.WriteLine("    activityFolderPath\t location where to store activity files.");
 
             return "";
         }
@@ -277,6 +287,15 @@ namespace S2.Meta
                     case "networkType":
                         networkType = parseNetworkTypeValue(value);
                         break;
+                    case "logFolderPath":
+                        logFolderPath = value;
+                        break;
+                    case "activityFolderPath":
+                        activityFolderPath = value;
+                        break;
+                    case "headersFolderPath":
+                        headersFolderPath = value;
+                        break;
                     default:
                         // unknown key
                         Logging.warn("Unknown config parameter was specified '" + key + "'");
@@ -363,6 +382,13 @@ namespace S2.Meta
             cmd_parser.Setup<bool>("onlyShowAddresses").Callback(value => onlyShowAddresses = true).Required();
 
             cmd_parser.Setup<string>("checksumLock").Callback(value => checksumLock = Encoding.UTF8.GetBytes(value)).Required();
+
+            cmd_parser.Setup<string>("activityFolderPath").Callback(value => activityFolderPath = value).Required();
+
+            cmd_parser.Setup<string>("headersFolderPath").Callback(value => headersFolderPath = value).Required();
+
+            cmd_parser.Setup<string>("logFolderPath").Callback(value => logFolderPath = value).Required();
+
 
             // Debug
             cmd_parser.Setup<string>("netdump").Callback(value => networkDumpFile = value).SetDefault("");

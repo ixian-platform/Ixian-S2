@@ -10,19 +10,24 @@ namespace S2.Meta
 {
     internal class S2TransactionInclusionCallbacks : TransactionInclusionCallbacks
     {
-        public void receivedTIVResponse(byte[] txid, bool verified)
+        public void receivedTIVResponse(Transaction tx, bool verified)
         {
-            // TODO implement error
-            // TODO implement blocknum
+            if (!verified)
+            {
+                tx.applied = 0;
+                Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
+                return;
+            }
 
             ActivityStatus status = ActivityStatus.Pending;
             if (verified)
             {
                 status = ActivityStatus.Final;
-                PendingTransactions.remove(txid);
+                PendingTransactions.remove(tx.id);
             }
 
-            Node.activityStorage.updateStatus(txid, status, 0);
+            var bh = IxianHandler.getBlockHeader(tx.applied);
+            Node.activityStorage.updateStatus(tx.id, status, tx.applied, bh.timestamp);
         }
 
         public void receivedBlockHeader(Block block_header, bool verified)

@@ -141,7 +141,7 @@ namespace S2
             IXICore.Utils.ConsoleHelpers.prepareWindowsConsole();
 
             // Start logging
-            if(!Logging.start(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location), Config.logVerbosity))
+            if(!Logging.start(Config.logFolderPath, Config.logVerbosity))
             {
                 IxianHandler.forceShutdown = true;
                 Logging.info("Press ENTER to exit.");

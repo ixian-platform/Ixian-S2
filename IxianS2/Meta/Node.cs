@@ -217,7 +217,7 @@ namespace S2.Meta
             // Start the network queue
             NetworkQueue.start();
 
-            activityStorage = new ActivityStorage(Path.Combine(Environment.CurrentDirectory, "activity"), 32 << 20, 0);
+            activityStorage = new ActivityStorage(Config.activityFolderPath, 32 << 20, 0);
             activityStorage.prepareStorage(true);
 
             if (Config.apiBinds.Count == 0)
@@ -263,10 +263,10 @@ namespace S2.Meta
             if (generatedNewWallet || !File.Exists(Config.walletFile))
             {
                 generatedNewWallet = false;
-                tiv.start("", false, false);
+                tiv.start(Config.headersFolderPath, false, false);
             }else
             {
-                tiv.start("", 0, null, false, false);
+                tiv.start(Config.headersFolderPath, 0, null, false, false);
             }
 
             // Start the maintenance thread
@@ -376,10 +376,14 @@ namespace S2.Meta
         // Cleans the storage cache and logs
         public static bool cleanCacheAndLogs()
         {
+            if (activityStorage is null)
+            {
+                activityStorage = new ActivityStorage(Config.activityFolderPath, 32 << 20, 0);
+            }
             activityStorage.stopStorage();
             activityStorage.deleteData();
             activityStorage.prepareStorage(false);
-
+            
             PeerStorage.deletePeersFile();
 
             Logging.clear();
@@ -461,9 +465,17 @@ namespace S2.Meta
 
         public static bool addTransaction(Address senderAddress, Transaction tx, List<Address> relayNodeAddresses, bool force_broadcast)
         {
-            CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
-            PendingTransactions.addPendingLocalTransaction(tx, null, null, senderAddress);
-            return true;
+            if (PendingTransactions.addPendingLocalTransaction(tx, null, null, senderAddress))
+            {
+                CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                if (tx.timeStamp == 0)
+                {
+                    tx.timeStamp = Clock.getTimestamp();
+                }
+                addTransactionToActivityStorage(tx);
+                return true;
+            }
+            return false;
         }
 
         public override Block getLastBlock()
@@ -579,46 +591,51 @@ namespace S2.Meta
 
         public static void processPendingTransactions()
         {
-            // TODO TODO improve to include failed transactions
             ulong last_block_height = IxianHandler.getLastBlockHeight();
             lock (PendingTransactions.pendingTransactions)
             {
                 long cur_time = Clock.getTimestamp();
-                List<PendingTransaction> tmp_pending_transactions = new List<PendingTransaction>(PendingTransactions.pendingTransactions);
-                int idx = 0;
+                List<PendingTransaction> tmp_pending_transactions = new(PendingTransactions.pendingTransactions);
                 foreach (var entry in tmp_pending_transactions)
                 {
-                    Transaction t = entry.transaction;
                     long tx_time = entry.addedTimestamp;
 
-                    if (t.applied != 0)
+                    if (entry.transaction.blockHeight > last_block_height)
                     {
-                        PendingTransactions.pendingTransactions.RemoveAll(x => x.transaction.id.SequenceEqual(t.id));
+                        // not ready yet, syncing to the network
                         continue;
                     }
 
+                    Transaction t = entry.transaction;
+
                     // if transaction expired, remove it from pending transactions
-                    if (last_block_height > ConsensusConfig.getRedactedWindowSize() && t.blockHeight < last_block_height - ConsensusConfig.getRedactedWindowSize())
+                    if (last_block_height > ConsensusConfig.getRedactedWindowSize()
+                        && t.blockHeight < last_block_height - ConsensusConfig.getRedactedWindowSize())
                     {
+                        Logging.error("Error sending the transaction {0}, expired", t.getTxIdString());
                         activityStorage.updateStatus(t.id, ActivityStatus.Error, 0);
                         PendingTransactions.pendingTransactions.RemoveAll(x => x.transaction.id.SequenceEqual(t.id));
                         continue;
                     }
 
-                    if (cur_time - tx_time > 40) // if the transaction is pending for over 40 seconds, resend
+                    if (entry.rejectedNodeList.Count() > 3
+                        && entry.rejectedNodeList.Count() > entry.confirmedNodeList.Count())
                     {
+                        Logging.error("Error sending the transaction {0}, rejected", t.getTxIdString());
+                        activityStorage.updateStatus(t.id, ActivityStatus.Error, 0);
+                        PendingTransactions.pendingTransactions.RemoveAll(x => x.transaction.id.SequenceEqual(t.id));
+                        continue;
+                    }
+
+                    if (cur_time - tx_time > 60) // if the transaction is pending for over 60 seconds, resend
+                    {
+                        Logging.warn("Transaction {0} pending for a while, resending", t.getTxIdString());
                         CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, t.getBytes(true, true), null);
 
                         entry.addedTimestamp = cur_time;
                         entry.confirmedNodeList.Clear();
+                        entry.rejectedNodeList.Clear();
                     }
-
-                    if (entry.confirmedNodeList.Count() > 3) // already received 3+ feedback
-                    {
-                        continue;
-                    }
-
-                    idx++;
                 }
             }
         }
