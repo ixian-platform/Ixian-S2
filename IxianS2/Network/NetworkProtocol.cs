@@ -400,7 +400,7 @@ namespace S2.Network
 
                 ToEntry value;
                 if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
-                    && value.amount >= tx.fee / 10)
+                    /*&& value.amount >= tx.fee / 10*/)
                 {
                     // Check if transaction already processed
                     if (Node.activityStorage.getActivityById(tx.id) != null
@@ -410,18 +410,26 @@ namespace S2.Network
                         return;
                     }
                     myTransaction = true;
-                } else
+                } /*else
                 {
                     endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TransactionInsufficientFee, tx.id).getBytes());
                     return;
-                }
+                }*/
             }
             else
             {
                 // Check if my transaction
-                if (IxianHandler.isMyAddress(tx.pubKey))
+                myTransaction = IxianHandler.isMyAddress(tx.pubKey);
+                if (!myTransaction)
                 {
-                    myTransaction = true;
+                    foreach (var toEntry in tx.toList.Keys)
+                    {
+                        if (IxianHandler.isMyAddress(toEntry))
+                        {
+                            myTransaction = true;
+                            break;
+                        }
+                    }
                 }
 
                 Dictionary<Address, RemoteEndpoint> clientsToSendTo = new(new AddressComparer());
@@ -441,34 +449,37 @@ namespace S2.Network
 
                 Logging.info("Received new transaction {0}", Crypto.hashToString(tx.id));
 
-                // If transaction already processed
-                ActivityObject activity = Node.activityStorage.getActivityById(tx.id, null);
-                if (activity != null)
+                if (myTransaction)
                 {
-                    if (activity.status != ActivityStatus.Final)
+                    // If transaction already processed
+                    ActivityObject activity = Node.activityStorage.getActivityById(tx.id, null);
+                    if (activity != null)
                     {
-                        if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                        if (activity.status != ActivityStatus.Final)
                         {
-                            PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
-                        }
+                            if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                            {
+                                PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
+                            }
 
-                        if (tx.applied != 0
-                            && tx.applied != activity.blockHeight)
-                        {
-                            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Pending, tx.applied);
-                        }
+                            if (tx.applied != 0
+                                && tx.applied != activity.blockHeight)
+                            {
+                                Node.activityStorage.updateStatus(tx.id, ActivityStatus.Pending, tx.applied);
+                            }
 
+                            Node.tiv.receivedNewTransaction(tx);
+                        }
+                    }
+                    else
+                    {
                         Node.tiv.receivedNewTransaction(tx);
+                        if (tx.timeStamp == 0)
+                        {
+                            tx.timeStamp = Clock.getTimestamp();
+                        }
+                        Node.addTransactionToActivityStorage(tx);
                     }
-                }
-                else
-                {
-                    Node.tiv.receivedNewTransaction(tx);
-                    if (tx.timeStamp == 0)
-                    {
-                        tx.timeStamp = Clock.getTimestamp();
-                    }
-                    Node.addTransactionToActivityStorage(tx);
                 }
 
                 // TODO deprecate subscriptions when "relevant transactions" are finalized
@@ -480,11 +491,7 @@ namespace S2.Network
 
                 foreach (var toEntry in tx.toList)
                 {
-                    if (IxianHandler.isMyAddress(toEntry.Key))
-                    {
-                        myTransaction = true;
-                    }
-                    else
+                    if (!IxianHandler.isMyAddress(toEntry.Key))
                     {
                         clients = getClientsSubscribedToAddress(toEntry.Key);
                         foreach (var client in clients)
