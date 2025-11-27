@@ -447,7 +447,7 @@ namespace S2.Network
                     }
                 }
 
-                Logging.info("Received new transaction {0}", Crypto.hashToString(tx.id));
+                Logging.trace("Received new transaction {0}", tx.getTxIdString());
 
                 if (myTransaction)
                 {
@@ -838,10 +838,10 @@ namespace S2.Network
                             if (endpoint.presenceAddress.type != 'M'
                                 && endpoint.presenceAddress.type != 'H')
                             {
-                                Logging.warn("Received 'rejected' message {0} {1} from non-master {2}", rej.code, Crypto.hashToString(rej.data), endpoint.getFullAddress());
+                                Logging.error("Received 'rejected' message {0} {1} from non-master {2}", rej.code, Transaction.getTxIdString(rej.data), endpoint.getFullAddress());
                                 return;
                             }
-                            Logging.error("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
+                            Logging.error("Transaction {0} was rejected with code: {1}", Transaction.getTxIdString(rej.data), rej.code);
 
                             PendingTransactions.increaseRejectedCount(rej.data, endpoint.serverWalletAddress);
                             var pendingTx = PendingTransactions.getPendingTransaction(rej.data);
@@ -858,10 +858,10 @@ namespace S2.Network
                             if (endpoint.presenceAddress.type != 'M'
                                 && endpoint.presenceAddress.type != 'H')
                             {
-                                Logging.warn("Received 'rejected' message {0} {1} from non-master node {2}", rej.code, Crypto.hashToString(rej.data), endpoint.getFullAddress());
+                                Logging.error("Received 'rejected' message {0} {1} from non-master {2}", rej.code, Transaction.getTxIdString(rej.data), endpoint.getFullAddress());
                                 return;
                             }
-                            Logging.warn("Received 'rejected' message {0} {1}", rej.code, Crypto.hashToString(rej.data));
+                            Logging.warn("Transaction {0} already sent.", Transaction.getTxIdString(rej.data), rej.code);
                             // All good
                             PendingTransactions.increaseReceivedCount(rej.data, endpoint.serverWalletAddress);
                             var pendingTx = PendingTransactions.getPendingTransaction(rej.data);
