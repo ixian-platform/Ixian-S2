@@ -26,6 +26,8 @@ namespace S2.Meta
                 PendingTransactions.remove(tx.id);
             }
 
+            IxianHandler.balances.First().lastUpdate = 0;
+
             var bh = IxianHandler.getBlockHeader(tx.applied);
             Node.activityStorage.updateStatus(tx.id, status, tx.applied, bh.timestamp);
         }
