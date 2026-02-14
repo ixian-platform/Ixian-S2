@@ -24,17 +24,19 @@ namespace S2.Meta
         public static int apiPort = 8001;
         public static int testnetApiPort = 8101;
 
+        public static string dataFolder = Environment.CurrentDirectory;
+
         public static Dictionary<string, string> apiUsers = new Dictionary<string, string>();
 
         public static List<string> apiAllowedIps = new List<string>();
         public static List<string> apiBinds = new List<string>();
 
         public static string configFilename = "ixian.cfg";
-        public static string walletFile = "ixian.wal";
+        public static string walletFile = "";
 
-        public static string activityFolderPath = "activity";
-        public static string headersFolderPath = Path.Combine(Environment.CurrentDirectory, "headers");
-        public static string logFolderPath = Environment.CurrentDirectory;
+        public static string activityFolderPath = "";
+        public static string headersFolderPath = "";
+        public static string logFolderPath = "";
 
         public static int maxLogSize = 50;
         public static int maxLogCount = 10;
@@ -94,10 +96,8 @@ namespace S2.Meta
 
         }
 
-        private static string outputHelp()
+        private static void outputHelp()
         {
-            S2.Program.noStart = true;
-
             Console.WriteLine("Starts a new instance of Ixian S2 Node");
             Console.WriteLine("");
             Console.WriteLine(" IxianS2.exe [-h] [-v] [-t] [-x] [-c] [-p 10234] [-a 8081] [-i ip] [-w ixian.wal] [-n seed1.ixian.io:10234]");
@@ -125,6 +125,7 @@ namespace S2.Meta
             Console.WriteLine("    --logFolderPath\t location where to store log files.");
             Console.WriteLine("    --headersFolderPath\t location where to store block header data.");
             Console.WriteLine("    --activityFolderPath location where to store activity files.");
+            Console.WriteLine("    --dataFolderPath\t root location where to store data.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
@@ -158,17 +159,19 @@ namespace S2.Meta
             Console.WriteLine("    logFolderPath\t location where to store log files.");
             Console.WriteLine("    headersFolderPath\t location where to store block header data.");
             Console.WriteLine("    activityFolderPath\t location where to store activity files.");
+            Console.WriteLine("    dataFolderPath\t root location where to store data.");
+            Console.WriteLine("    checksumLock\t Sets the checksum lock for seeding checksums - useful for custom networks.");
+            Console.WriteLine("    networkType\t\t mainnet, testnet or regtest.");
+            Console.WriteLine("    wallet\t\t Specify location of the ixian.wal file");
+            Console.WriteLine("    walletPassword\t Specify the password for the wallet.");
 
-            return "";
+            Environment.Exit(0);
         }
 
-        private static string outputVersion()
+        private static void outputVersion()
         {
-            S2.Program.noStart = true;
-
-            // Do nothing since version is the first thing displayed
-
-            return "";
+            // Do nothing but exit since version is the first thing displayed
+            Environment.Exit(0);
         }
 
         private static NetworkType parseNetworkTypeValue(string value)
@@ -296,6 +299,15 @@ namespace S2.Meta
                     case "headersFolderPath":
                         headersFolderPath = value;
                         break;
+                    case "dataFolderPath":
+                        dataFolder = value;
+                        break;
+                    case "wallet":
+                        walletFile = value;
+                        break;
+                    case "walletPassword":
+                        dangerCommandlinePasswordCleartextUnsafe = value;
+                        break;
                     default:
                         // unknown key
                         Logging.warn("Unknown config parameter was specified '" + key + "'");
@@ -303,7 +315,8 @@ namespace S2.Meta
                 }
             }
         }
-        public static void readFromCommandLine(string[] args)
+
+        public static void init(string[] args)
         {
             // first pass
             var cmd_parser = new FluentCommandLineParser();
@@ -311,19 +324,15 @@ namespace S2.Meta
             // help
             cmd_parser.SetupHelp("h", "help").Callback(text => outputHelp());
 
+            // version
+            cmd_parser.Setup<bool>('v', "version").Callback(text => outputVersion());
+
             // config file
             cmd_parser.Setup<string>("config").Callback(value => configFilename = value).Required();
 
             cmd_parser.Parse(args);
 
-            if (S2.Program.noStart)
-            {
-                return;
-            }
-
             readConfigFile(configFilename);
-
-
 
             // second pass
             cmd_parser = new FluentCommandLineParser();
@@ -352,9 +361,6 @@ namespace S2.Meta
             cmd_parser = new FluentCommandLineParser();
 
             bool start_clean = false; // Flag to determine if node should delete cache+logs
-
-            // version
-            cmd_parser.Setup<bool>('v', "version").Callback(text => outputVersion());
 
             // Check for password change
             cmd_parser.Setup<bool>('x', "changepass").Callback(value => changePass = value).Required();
@@ -388,6 +394,8 @@ namespace S2.Meta
             cmd_parser.Setup<string>("headersFolderPath").Callback(value => headersFolderPath = value).Required();
 
             cmd_parser.Setup<string>("logFolderPath").Callback(value => logFolderPath = value).Required();
+
+            cmd_parser.Setup<string>("dataFolderPath").Callback(value => dataFolder = value).Required();
 
 
             // Debug
@@ -433,8 +441,33 @@ namespace S2.Meta
                         break;
                 }
             }
+
+            if (headersFolderPath == "")
+            {
+                if (IxianHandler.networkType == NetworkType.main)
+                {
+                    headersFolderPath = Path.Combine(dataFolder, "headers");
+                }
+                else
+                {
+                    headersFolderPath = Path.Combine(dataFolder, "testnet-headers");
+                }
+            }
+
+            if (activityFolderPath == "")
+            {
+                activityFolderPath = dataFolder;
+            }
+
+            if (logFolderPath == "")
+            {
+                logFolderPath = dataFolder;
+            }
+
+            if (walletFile == "")
+            {
+                walletFile = Path.Combine(dataFolder, "ixian.wal");
+            }
         }
-
     }
-
 }

@@ -60,11 +60,11 @@ namespace S2.Meta
             if (!initWallet())
             {
                 running = false;
-                S2.Program.noStart = true;
+                IxianHandler.forceShutdown = true;
                 return;
             }
 
-            PeerStorage.init("");
+            PeerStorage.init(Config.dataFolder);
 
             // Init TIV
             tiv = new TransactionInclusion(new S2TransactionInclusionCallbacks(), true);
@@ -320,7 +320,6 @@ namespace S2.Meta
             Logging.info("Stopping node...");
             running = false;
 
-            Program.noStart = true;
             IxianHandler.forceShutdown = true;
 
             UpdateVerify.stop();

@@ -4,8 +4,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <RootNamespace>S2</RootNamespace>
-    <AssemblyName>IxianS2</AssemblyName>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+	<ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
   
   <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
@@ -20,37 +21,38 @@
     <DefineConstants>$(DefineConstants);MACCATALYST</DefineConstants>
   </PropertyGroup>
   
+  <Import Project="..\..\Ixian-Core\IXICore.projitems" Label="Shared" />
+  
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageReference Include="FluentCommandLineParser-netstandard" Version="1.4.3.13" />
+    <PackageReference Include="Mono.Nat" Version="3.0.4" />
+    <PackageReference Include="RocksDB" Version="10.4.2.63147" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+  
   <PropertyGroup>
     <ApplicationIcon>IxianS2.ico</ApplicationIcon>
+    <AssemblyName>IxianS2</AssemblyName>
+    <AssemblyTitle>Ixian S2</AssemblyTitle>
+    <AssemblyDescription></AssemblyDescription>
+    <AssemblyCompany>Ixian</AssemblyCompany>
+    <Product>Ixian S2</Product>
+    <Copyright>Copyright © 2026 Ixian</Copyright>
+    <VersionPrefix>0.9.4.1</VersionPrefix>
+    <PackageProjectUrl>https://www.ixian.io</PackageProjectUrl>
+    <CLSCompliant>true</CLSCompliant>
+    <ComVisible>false</ComVisible>
   </PropertyGroup>
+  
   <ItemGroup>
     <Content Include="IxianS2.ico" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
-    <PackageReference Include="FluentCommandLineParser" Version="1.4.3" />
-    <PackageReference Include="Open.Nat" Version="2.1.0" />
-    <PackageReference Include="RocksDB" Version="10.4.2.62659" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.10" />
-  </ItemGroup>
-  <Import Project="..\..\Ixian-Core\IXICore.projitems" Label="Shared" />
+  
   <Target Name="CopyHTMLToOutput" AfterTargets="CoreCompile">
     <ItemGroup>
-      <IXIPB1 Include="$(SolutionDir)\..\Ixian-Core\html\*.*" />
+      <IXIPB1 Include="$(SolutionDir)\..\Ixian-Core\html\**\*.*" />
     </ItemGroup>
-    <ItemGroup>
-      <IXIPB2 Include="$(SolutionDir)\..\Ixian-Core\html\img\*.*" />
-    </ItemGroup>
-    <ItemGroup>
-      <IXIPB3 Include="$(SolutionDir)\..\Ixian-Core\html\css\*.*" />
-    </ItemGroup>
-    <ItemGroup>
-      <IXIPB4 Include="$(SolutionDir)\..\Ixian-Core\html\js\*.*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(IXIPB1)" DestinationFolder="$(OutputPath)\html" ContinueOnError="true" />
-    <Copy SourceFiles="@(IXIPB2)" DestinationFolder="$(OutputPath)\html\img" ContinueOnError="true" />
-    <Copy SourceFiles="@(IXIPB3)" DestinationFolder="$(OutputPath)\html\css" ContinueOnError="true" />
-    <Copy SourceFiles="@(IXIPB4)" DestinationFolder="$(OutputPath)\html\js" ContinueOnError="true" />
+    <Copy SourceFiles="@(IXIPB1)" DestinationFolder="$(OutputPath)\html\%(RecursiveDir)" ContinueOnError="true" />
   </Target>
 </Project>
