@@ -10,27 +10,26 @@ namespace S2.Meta
 {
     internal class S2TransactionInclusionCallbacks : TransactionInclusionCallbacks
     {
-        public void receivedTIVResponse(Transaction tx, bool verified)
+        public void transactionVerified(Transaction tx)
         {
-            if (!verified)
-            {
-                tx.applied = 0;
-                Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
-                return;
-            }
-
-            ActivityStatus status = ActivityStatus.Pending;
-            if (verified)
-            {
-                status = ActivityStatus.Final;
-                PendingTransactions.remove(tx.id);
-            }
-
             IxianHandler.balances.First().lastUpdate = 0;
 
             var bh = IxianHandler.getBlockHeader(tx.applied);
-            Node.activityStorage.updateStatus(tx.id, status, tx.applied, bh.timestamp);
+            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Final, tx.applied, bh.timestamp);
         }
+
+        public void transactionRejected(Transaction tx)
+        {
+            tx.applied = 0;
+            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
+        }
+
+        public void transactionExpired(Transaction tx)
+        {
+            tx.applied = 0;
+            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
+        }
+
 
         public void receivedBlockHeader(Block block_header, bool verified)
         {
@@ -42,14 +41,17 @@ namespace S2.Meta
                 }
             }
 
-            if (block_header.blockNum >= IxianHandler.getHighestKnownNetworkBlockHeight())
+            if (block_header.blockNum + 10 >= IxianHandler.getHighestKnownNetworkBlockHeight())
             {
                 IxianHandler.status = NodeStatus.ready;
             }
 
             NetworkServer.addToInventory(['C'], new InventoryItemBlock(block_header.blockChecksum, block_header.blockNum), null);
+        }
 
-            Node.processPendingTransactions();
+        public void blockReorg(Block blockHeader)
+        {
+            Node.activityStorage.revertTransactionsByBlockHeight(blockHeader.blockNum);
         }
     }
 }

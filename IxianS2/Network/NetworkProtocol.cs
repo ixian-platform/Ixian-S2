@@ -205,6 +205,10 @@ namespace S2.Network
                         handleGetRandomPresences(data, endpoint);
                         break;
 
+                    case ProtocolMessageCode.transactionsChunk3:
+                        handleTransactionsChunk3(data, endpoint);
+                        break;
+
                     default:
                         Logging.warn("Unknown protocol message: {0}, from {1} ({2})", code, endpoint.getFullAddress(), endpoint.serverWalletAddress);
                         break;
@@ -213,6 +217,71 @@ namespace S2.Network
             catch (Exception e)
             {
                 Logging.error("Error parsing network message. Details: {0}", e.ToString());
+            }
+        }
+
+        public static void handleTransactionsChunk3(byte[] data, RemoteEndpoint endpoint)
+        {
+            using (MemoryStream m = new MemoryStream(data))
+            {
+                using (BinaryReader reader = new BinaryReader(m))
+                {
+                    if (endpoint.presenceAddress.type != 'M' && endpoint.presenceAddress.type != 'H')
+                    {
+                        Logging.warn("Received transactions chunk from non-master node {0}. Ignoring.", endpoint.getFullAddress());
+                        return;
+                    }
+
+                    var tag = reader.ReadIxiBytes();
+                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, tag);
+                    if (pendingRequest != default)
+                    {
+                        byte[] txChunkData = new byte[data.Length - reader.BaseStream.Position];
+                        Buffer.BlockCopy(data, (int)reader.BaseStream.Position, txChunkData, 0, txChunkData.Length);
+                        foreach (var client in pendingRequest.endpoints)
+                        {
+                            client.sendData(ProtocolMessageCode.compactBlockHeaders1, txChunkData);
+                        }
+                        return;
+                    }
+
+                    long msg_id = reader.ReadIxiVarInt();
+
+                    int tx_count = (int)reader.ReadIxiVarUInt();
+
+                    int max_tx_per_chunk = CoreConfig.maximumTransactionsPerChunk;
+                    if (tx_count > max_tx_per_chunk)
+                    {
+                        tx_count = max_tx_per_chunk;
+                    }
+
+                    var sw = new System.Diagnostics.Stopwatch();
+                    sw.Start();
+                    int processedTxCount = 0;
+                    int totalTxCount = 0;
+                    for (int i = 0; i < tx_count; i++)
+                    {
+                        if (m.Position == m.Length)
+                        {
+                            break;
+                        }
+
+                        int tx_len = (int)reader.ReadIxiVarUInt();
+                        byte[] tx_bytes = reader.ReadBytes(tx_len);
+
+                        Transaction tx = new Transaction(tx_bytes, false, true);
+
+                        totalTxCount++;
+
+                        if (IxianHandler.addIncomingTransaction(tx))
+                        {
+                            processedTxCount++;
+                        }
+                    }
+                    sw.Stop();
+                    TimeSpan elapsed = sw.Elapsed;
+                    Logging.info("Processed {0}/{1} txs for #{2} in {3}ms", processedTxCount, totalTxCount, msg_id, elapsed.TotalMilliseconds);
+                }
             }
         }
 
@@ -229,7 +298,7 @@ namespace S2.Network
                     byte[] filterBytes = reader.ReadBytes(filterLen);
 
                     byte[] prKey = new byte[reader.BaseStream.Position];
-                    Array.Copy(data, 0, prKey, 0, prKey.Length);
+                    Buffer.BlockCopy(data, 0, prKey, 0, prKey.Length);
 
                     var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, prKey);
                     if (pendingRequest != default)
@@ -238,6 +307,13 @@ namespace S2.Network
                         {
                             client.sendData(ProtocolMessageCode.compactBlockHeaders1, data);
                         }
+                    }
+                    else
+                    {
+                        byte[] headersBytes = new byte[reader.BaseStream.Length - reader.BaseStream.Position];
+                        Buffer.BlockCopy(data, (int)reader.BaseStream.Position, headersBytes, 0, headersBytes.Length);
+
+                        Node.tiv.receivedBlockHeaders3(data, endpoint);
                     }
                 }
             }
@@ -278,8 +354,6 @@ namespace S2.Network
             byte[] pitData = new byte[data.Length - filterWithOffset.bytesRead];
             Buffer.BlockCopy(data, filterWithOffset.bytesRead, pitData, 0, pitData.Length);
 
-            Node.tiv.receivedPIT2(pitData, endpoint);
-
             var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getPIT2, key);
             if (pendingRequest != default)
             {
@@ -288,6 +362,15 @@ namespace S2.Network
                     prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
                 }
             }
+            else if (pendingRequests[ProtocolMessageCode.getRelevantBlockTransactions].TryGetValue(filterWithOffset.bytes, out pendingRequest))
+            {
+                foreach (var prEndpoint in pendingRequest.endpoints)
+                {
+                    prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
+                }
+            }
+
+            Node.tiv.receivedPIT2(pitData, endpoint);
         }
 
         public static void handleGetBlockHeaders3(byte[] data, RemoteEndpoint endpoint)
@@ -338,7 +421,7 @@ namespace S2.Network
                             {
                                 for (int j = 0; j < CoreConfig.maximumBlockHeadersPerChunk && i < totalCount; j++)
                                 {
-                                    Block block = IxianHandler.getBlockHeader(from + i);
+                                    Block? block = IxianHandler.getBlockHeader(from + i);
                                     i++;
                                     if (block == null)
                                         break;
@@ -369,25 +452,6 @@ namespace S2.Network
             }
         }
 
-        private static List<RemoteEndpoint> getClientsSubscribedToAddress(Address address)
-        {
-            List<RemoteEndpoint> clients = new();
-            foreach (var client in NetworkServer.connectedClients)
-            {
-                if (!client.helloReceived)
-                {
-                    continue;
-                }
-
-                if (client.isSubscribedToAddress(NetworkEvents.Type.transactionFrom, address.addressNoChecksum)
-                    || client.isSubscribedToAddress(NetworkEvents.Type.transactionTo, address.addressNoChecksum))
-                {
-                    clients.Add(client);
-                }
-            }
-            return clients;
-        }
-
         public static void handleTransactionData(byte[] data, RemoteEndpoint endpoint)
         {
             Transaction tx = new Transaction(data, true, true);
@@ -403,8 +467,7 @@ namespace S2.Network
                     /*&& value.amount >= tx.fee / 10*/)
                 {
                     // Check if transaction already processed
-                    if (Node.activityStorage.getActivityById(tx.id) != null
-                        || !Node.addTransaction(endpoint.serverWalletAddress, tx, null, true))
+                    if (!Node.addTransaction(endpoint.serverWalletAddress, tx, null, null, null, true))
                     {
                         endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TransactionDuplicate, tx.id).getBytes());
                         return;
@@ -431,79 +494,40 @@ namespace S2.Network
                         }
                     }
                 }
+            }
 
-                Dictionary<Address, RemoteEndpoint> clientsToSendTo = new(new AddressComparer());
-
-                var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getTransaction3, tx.id);
-                if (pendingRequest != default)
+            var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getTransaction3, tx.id);
+            if (pendingRequest != default)
+            {
+                foreach (var client in pendingRequest.endpoints)
                 {
-                    foreach (var client in pendingRequest.endpoints)
+                    if (client.serverWalletAddress == null)
                     {
-                        if (client.serverWalletAddress == null)
-                        {
-                            continue;
-                        }
-                        client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                        continue;
                     }
-                }
-
-                Logging.trace("Received new transaction {0}", tx.getTxIdString());
-
-                if (myTransaction)
-                {
-                    // If transaction already processed
-                    ActivityObject activity = Node.activityStorage.getActivityById(tx.id, null);
-                    if (activity != null)
-                    {
-                        if (activity.status != ActivityStatus.Final)
-                        {
-                            if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
-                            {
-                                PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
-                            }
-
-                            if (tx.applied != 0
-                                && tx.applied != activity.blockHeight)
-                            {
-                                Node.activityStorage.updateStatus(tx.id, ActivityStatus.Pending, tx.applied);
-                            }
-
-                            Node.tiv.receivedNewTransaction(tx);
-                        }
-                    }
-                    else
-                    {
-                        Node.tiv.receivedNewTransaction(tx);
-                        if (tx.timeStamp == 0)
-                        {
-                            tx.timeStamp = Clock.getTimestamp();
-                        }
-                        Node.addTransactionToActivityStorage(tx);
-                    }
-                }
-
-                // TODO deprecate subscriptions when "relevant transactions" are finalized
-                var clients = getClientsSubscribedToAddress(tx.pubKey);
-                foreach (var client in clients)
-                {
-                    clientsToSendTo.AddOrReplace(client.serverWalletAddress, client);
-                }
-
-                foreach (var toEntry in tx.toList)
-                {
-                    if (!IxianHandler.isMyAddress(toEntry.Key))
-                    {
-                        clients = getClientsSubscribedToAddress(toEntry.Key);
-                        foreach (var client in clients)
-                        {
-                            clientsToSendTo.AddOrReplace(client.serverWalletAddress, client);
-                        }
-                    }
-                }
-
-                foreach (var client in clientsToSendTo.Values)
-                {
                     client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                }
+            }
+
+            Logging.trace("Received new transaction {0}", tx.getTxIdString());
+
+            if (myTransaction)
+            {
+                // If transaction already processed
+                ActivityObject? activity = Node.activityStorage.getActivityById(tx.id, null);
+                if (activity != null)
+                {
+                    if (activity.status != ActivityStatus.Final)
+                    {
+                        if (endpoint.presenceAddress.type == 'M' || endpoint.presenceAddress.type == 'H')
+                        {
+                            PendingTransactions.increaseReceivedCount(tx.id, endpoint.presence.wallet);
+                        }
+                    }
+                }
+                else
+                {
+                    IxianHandler.addIncomingTransaction(tx);
                 }
             }
         }
@@ -734,11 +758,22 @@ namespace S2.Network
             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBalance2, data, null);
         }
 
-
         public static void handleGetRelevantBlockTransactions(byte[] data, RemoteEndpoint endpoint)
         {
-            addPendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, data, endpoint);
-            NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getRelevantBlockTransactions, data, null);
+            using (MemoryStream m = new MemoryStream(data))
+            using (BinaryReader reader = new BinaryReader(m))
+            {
+                ulong from = reader.ReadIxiVarUInt();
+                ulong totalCount = reader.ReadIxiVarUInt();
+
+                byte[] filterBytes = reader.ReadIxiBytes()!;
+
+                byte[] prKey = new byte[reader.BaseStream.Position];
+                Buffer.BlockCopy(data, 0, prKey, 0, prKey.Length);
+
+                addPendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, prKey, endpoint);
+                NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getRelevantBlockTransactions, data, null);
+            }
         }
 
         public static void handleGetSectorNodes(byte[] data, RemoteEndpoint endpoint)
@@ -948,7 +983,6 @@ namespace S2.Network
                         {
                             endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'M' });
                             endpoint.sendData(ProtocolMessageCode.getRandomPresences, new byte[1] { (byte)'H' });
-                            CoreProtocolMessage.subscribeToEvents(endpoint);
                         }
 
                         if (node_type == 'M' || node_type == 'H')
@@ -1061,7 +1095,6 @@ namespace S2.Network
 
                     Dictionary<ulong, List<InventoryItemSignature>> sig_lists = new Dictionary<ulong, List<InventoryItemSignature>>();
                     List<InventoryItemKeepAlive> ka_list = new List<InventoryItemKeepAlive>();
-                    List<byte[]> tx_list = new List<byte[]>();
                     for (ulong i = 0; i < item_count; i++)
                     {
                         ulong len = reader.ReadIxiVarUInt();
@@ -1104,11 +1137,6 @@ namespace S2.Network
                                     }
                                     break;
 
-                                case InventoryItemTypes.transaction:
-                                    tx_list.Add(item.hash);
-                                    pii.lastRequested = Clock.getTimestamp();
-                                    break;
-
                                 case InventoryItemTypes.block:
                                     var iib = ((InventoryItemBlock)item);
                                     if (iib.blockNum <= last_accepted_block_height)
@@ -1135,8 +1163,6 @@ namespace S2.Network
                     }
 
                     CoreProtocolMessage.broadcastGetKeepAlives(ka_list, endpoint);
-
-                    CoreProtocolMessage.broadcastGetTransactions(tx_list, 0, endpoint);
                 }
             }
         }
