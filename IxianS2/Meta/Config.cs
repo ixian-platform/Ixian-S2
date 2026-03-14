@@ -56,7 +56,7 @@ namespace S2.Meta
         public static readonly string checkVersionUrl = "https://resources.ixian.io/s2-update.txt";
         public static readonly int checkVersionSeconds = 6 * 60 * 60; // 6 hours
 
-        public static readonly int maximumStreamClients = 1000; // Maximum number of stream clients this server can accept
+        public static readonly int maximumStreamClients = 10000; // Maximum number of stream clients this server can accept
 
         // Quotas
         public static readonly long lastPaidTimeQuota = 10 * 60; // Allow 10 minutes after payment before checking quotas
@@ -91,6 +91,8 @@ namespace S2.Meta
 
         public static byte[] checksumLock = null;
 
+        public static ulong rocksDbCacheSize = 32 << 20;
+
         private Config()
         {
 
@@ -121,11 +123,11 @@ namespace S2.Meta
             Console.WriteLine("    --disableWebStart\t Disable running http://localhost:8081 on startup");
             Console.WriteLine("    --checksumLock\t Sets the checksum lock for seeding checksums - useful for custom networks.");
             Console.WriteLine("    --verboseOutput\t Starts node with verbose output.");
-            Console.WriteLine("    --networkType\t mainnet, testnet or regtest.");
-            Console.WriteLine("    --logFolderPath\t location where to store log files.");
-            Console.WriteLine("    --headersFolderPath\t location where to store block header data.");
-            Console.WriteLine("    --activityFolderPath location where to store activity files.");
-            Console.WriteLine("    --dataFolderPath\t root location where to store data.");
+            Console.WriteLine("    --networkType\t Network type - mainnet, testnet or regtest.");
+            Console.WriteLine("    --logFolderPath\t Location where to store log files.");
+            Console.WriteLine("    --headersFolderPath\t Location where to store block header data.");
+            Console.WriteLine("    --activityFolderPath Location where to store activity files.");
+            Console.WriteLine("    --dataFolderPath\t Root location where to store data.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
@@ -156,12 +158,12 @@ namespace S2.Meta
             Console.WriteLine("    logVerbosity\t Sets log verbosity (same as --logVerbosity CLI)");
             Console.WriteLine("    disableWebStart\t 1 to disable running http://localhost:8081 on startup (same as --disableWebStart CLI)");
             Console.WriteLine("    blockNotify\t\t Execute command when the block changes");
-            Console.WriteLine("    logFolderPath\t location where to store log files.");
-            Console.WriteLine("    headersFolderPath\t location where to store block header data.");
-            Console.WriteLine("    activityFolderPath\t location where to store activity files.");
-            Console.WriteLine("    dataFolderPath\t root location where to store data.");
+            Console.WriteLine("    logFolderPath\t Location where to store log files.");
+            Console.WriteLine("    headersFolderPath\t Location where to store block header data.");
+            Console.WriteLine("    activityFolderPath\t Location where to store activity files.");
+            Console.WriteLine("    dataFolderPath\t Root location where to store data.");
             Console.WriteLine("    checksumLock\t Sets the checksum lock for seeding checksums - useful for custom networks.");
-            Console.WriteLine("    networkType\t\t mainnet, testnet or regtest.");
+            Console.WriteLine("    networkType\t\t Network type - mainnet, testnet or regtest.");
             Console.WriteLine("    wallet\t\t Specify location of the ixian.wal file");
             Console.WriteLine("    walletPassword\t Specify the password for the wallet.");
 

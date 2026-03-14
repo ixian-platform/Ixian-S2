@@ -4,6 +4,8 @@ using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.RegNames;
+using IXICore.Storage;
+using IXICore.Streaming;
 using IXICore.Utils;
 using S2.Network;
 using System;
@@ -17,44 +19,39 @@ namespace S2.Meta
 {
     class Node : IxianNode
     {
-        public static APIServer apiServer;
-
-        public static StatsConsoleScreen statsConsoleScreen = null;
 
         public static TransactionInclusion tiv = null;
-
-        // Private data
-        private static Thread maintenanceThread;
-
-        private static bool running = false;
-
-        private bool generatedNewWallet = false;
 
         public static NetworkClientManagerStatic networkClientManagerStatic = null;
         public static NetworkClientManagerRandomized networkClientManagerRandomized = null;
 
-        public static IActivityStorage activityStorage;
+        public static IActivityStorage activityStorage = null;
+
+        public static IStorage storage = null;
+
+        // Private data
+        private static StatsConsoleScreen statsConsoleScreen;
+
+        private static APIServer? apiServer = null;
+
+        private static Thread? mainLoopThread = null;
+
+        private static bool running = false;
 
         public Node()
         {
             CoreConfig.device_id = [1];
             IxianHandler.enableNetworkServer = true;
-            IxianHandler.init(Config.version, this, Config.networkType, true, Config.checksumLock);
             init();
         }
 
         // Perform basic initialization of node
         private void init()
         {
-            running = true;
+            IxianHandler.init(Config.version, this, Config.networkType, true, Config.checksumLock);
 
             CoreConfig.maximumServerMasterNodes = Config.maximumStreamClients;
             CoreConfig.maximumServerClients = Config.maximumStreamClients;
-
-            UpdateVerify.init(Config.checkVersionUrl, Config.checkVersionSeconds);
-
-            // Network configuration
-            NetworkUtils.configureNetwork(Config.externalIp, Config.serverPort);
 
             // Load or Generate the wallet
             if (!initWallet())
@@ -64,10 +61,23 @@ namespace S2.Meta
                 return;
             }
 
+            // Network configuration
+            NetworkUtils.configureNetwork(Config.externalIp, Config.serverPort);
+
+            UpdateVerify.init(Config.checkVersionUrl, Config.checkVersionSeconds);
+
+            // Initialize storage
+            if (storage is null)
+            {
+                storage = new RocksDBStorage(Config.headersFolderPath, Config.rocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50);
+            }
+
+            activityStorage = new ActivityStorage(Config.activityFolderPath, Config.rocksDbCacheSize, 0);
+
             PeerStorage.init(Config.dataFolder);
 
             // Init TIV
-            tiv = new TransactionInclusion(new S2TransactionInclusionCallbacks(), true);
+            tiv = new TransactionInclusion(storage, new S2TransactionInclusionCallbacks(), TIVBlockVerificationMode.Signatures);
 
             InventoryCache.init(new InventoryCacheS2(tiv));
 
@@ -81,6 +91,8 @@ namespace S2.Meta
 
             // Setup the stats console
             statsConsoleScreen = new StatsConsoleScreen();
+
+            Logging.info("Node init done");
         }
 
         private bool initWallet()
@@ -112,7 +124,6 @@ namespace S2.Meta
                     }
                 }
                 walletStorage.generateWallet(password);
-                generatedNewWallet = true;
             }
             else
             {
@@ -209,6 +220,14 @@ namespace S2.Meta
 
         public void start(bool verboseConsoleOutput)
         {
+            if (running)
+            {
+                return;
+            }
+            Logging.info("Starting node");
+
+            running = true;
+
             UpdateVerify.start();
 
             // Generate presence list
@@ -217,8 +236,30 @@ namespace S2.Meta
             // Start the network queue
             NetworkQueue.start();
 
-            activityStorage = new ActivityStorage(Config.activityFolderPath, 32 << 20, 0);
+            if (!storage.prepareStorage(true))
+            {
+                Logging.error("Error while preparing block storage! Aborting.");
+                IxianHandler.forceShutdown = true;
+                return;
+            }
+
             activityStorage.prepareStorage(true);
+
+            var pending_txs = activityStorage.getActivitiesByStatus(ActivityStatus.Pending, true);
+            pending_txs.AddRange(activityStorage.getActivitiesByStatus(ActivityStatus.Reverted, true));
+            // Load pending transactions
+            foreach (var pending_tx in pending_txs)
+            {
+                if (pending_tx.type == ActivityType.TransactionReceived)
+                {
+                    PendingTransactions.addIncomingTransaction(pending_tx.transaction);
+                }
+                else if (pending_tx.type == ActivityType.TransactionSent
+                        || pending_tx.type == ActivityType.IxiName)
+                {
+                    PendingTransactions.addOutgoingTransaction(pending_tx.transaction, pending_tx.transaction.toList.TakeLast(2).Select(x => x.Key).ToList());
+                }
+            }
 
             if (Config.apiBinds.Count == 0)
             {
@@ -260,52 +301,12 @@ namespace S2.Meta
             PresenceList.startKeepAlive();
 
             // Start TIV
-            if (generatedNewWallet || !File.Exists(Config.walletFile))
-            {
-                generatedNewWallet = false;
-                tiv.start(Config.headersFolderPath, false, false);
-            }else
-            {
-                tiv.start(Config.headersFolderPath, 0, null, false, false);
-            }
+            tiv.start(0, null, false);
 
             // Start the maintenance thread
-            maintenanceThread = new Thread(performMaintenance);
-            maintenanceThread.Start();
-        }
-
-        static public bool update()
-        {
-            // Update the stream processor
-            StreamProcessor.update();
-
-            // Request initial wallet balance
-            if (IxianHandler.balances.First().blockHeight == 0 || IxianHandler.balances.First().lastUpdate + 300 < Clock.getTimestamp())
-            {
-                using (MemoryStream mw = new MemoryStream())
-                {
-                    using (BinaryWriter writer = new BinaryWriter(mw))
-                    {
-                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
-                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
-                        NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getBalance2, mw.ToArray(), null);
-                    }
-                }
-
-                CoreProtocolMessage.fetchSectorNodes(IxianHandler.primaryWalletAddress, Config.maxRelaySectorNodesToRequest);
-
-                ProtocolMessage.clearOldData();
-            }
-
-            if (IxianHandler.status != NodeStatus.warmUp)
-            {
-                if (Clock.getTimestamp() - BlockHeaderStorage.lastBlockHeaderTime > 1800) // if no block for over 1800 seconds
-                {
-                    IxianHandler.status = NodeStatus.stalled;
-                }
-            }
-
-            return running;
+            mainLoopThread = new Thread(mainLoop);
+            mainLoopThread.Name = "Main_Loop_Thread";
+            mainLoopThread.Start();
         }
 
         static public void stop()
@@ -337,11 +338,11 @@ namespace S2.Meta
                 apiServer = null;
             }
 
-            if (maintenanceThread != null)
+            if (mainLoopThread != null)
             {
-                maintenanceThread.Interrupt();
-                maintenanceThread.Join();
-                maintenanceThread = null;
+                mainLoopThread.Interrupt();
+                mainLoopThread.Join();
+                mainLoopThread = null;
             }
 
             activityStorage.stopStorage();
@@ -363,6 +364,9 @@ namespace S2.Meta
             // Stop the network server
             NetworkServer.stopNetworkOperations();
 
+            // Stop the block storage
+            storage.stopStorage();
+
             IxianHandler.status = NodeStatus.stopped;
 
             Logging.info("Node stopped");
@@ -377,12 +381,18 @@ namespace S2.Meta
         {
             if (activityStorage is null)
             {
-                activityStorage = new ActivityStorage(Config.activityFolderPath, 32 << 20, 0);
+                activityStorage = new ActivityStorage(Config.activityFolderPath, Config.rocksDbCacheSize, 0);
             }
             activityStorage.stopStorage();
             activityStorage.deleteData();
             activityStorage.prepareStorage(false);
-            
+
+            if (storage is null)
+            {
+                storage = new RocksDBStorage(Config.headersFolderPath, Config.rocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50);
+            }
+            storage.deleteData();
+
             PeerStorage.deletePeersFile();
 
             Logging.clear();
@@ -392,7 +402,7 @@ namespace S2.Meta
         }
 
         // Perform periodic cleanup tasks
-        private static void performMaintenance()
+        private static void mainLoop()
         {
             try
             {
@@ -407,6 +417,41 @@ namespace S2.Meta
 
                         // Cleanup the presence list
                         PresenceList.performCleanup();
+
+                        // Request initial wallet balance
+                        bool firstBalance = true;
+                        foreach (var balance in IxianHandler.balances)
+                        {
+                            // Request initial wallet balance
+                            if (balance.blockHeight == 0 || balance.lastUpdate + 300 < Clock.getTimestamp())
+                            {
+                                using (MemoryStream mw = new MemoryStream())
+                                {
+                                    using (BinaryWriter writer = new BinaryWriter(mw))
+                                    {
+                                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
+                                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
+                                        NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getBalance2, mw.ToArray(), null);
+                                    }
+                                }
+
+                                if (firstBalance)
+                                {
+                                    CoreProtocolMessage.fetchSectorNodes(IxianHandler.primaryWalletAddress, Config.maxRelaySectorNodesToRequest);
+
+                                    ProtocolMessage.clearOldData();
+                                }
+                            }
+                            firstBalance = false;
+                        }
+
+                        if (IxianHandler.status != NodeStatus.warmUp)
+                        {
+                            if (Clock.getTimestamp() - IxianHandler.getLastBlock().timestamp > 1800) // if no block for over 1800 seconds
+                            {
+                                IxianHandler.status = NodeStatus.stalled;
+                            }
+                        }
                     }
                     catch (Exception e)
                     {
@@ -427,11 +472,12 @@ namespace S2.Meta
 
         public override ulong getLastBlockHeight()
         {
-            if (tiv.getLastBlockHeader() == null)
+            Block? block = tiv.getLastBlockHeader();
+            if (block == null)
             {
                 return 0;
             }
-            return tiv.getLastBlockHeader().blockNum;
+            return block.blockNum;
         }
 
         public override ulong getHighestKnownNetworkBlockHeight()
@@ -448,36 +494,57 @@ namespace S2.Meta
 
         public override int getLastBlockVersion()
         {
-            if (tiv.getLastBlockHeader() == null
-                || tiv.getLastBlockHeader().version < Block.maxVersion)
+            Block? block = tiv.getLastBlockHeader();
+            if (block == null
+                || block.version < Block.maxVersion)
             {
                 // TODO Omega force to v10 after upgrade
                 return Block.maxVersion - 1;
             }
-            return tiv.getLastBlockHeader().version;
+            return block.version;
         }
 
-        public override bool addTransaction(Transaction tx, List<Address> relayNodeAddresses, bool force_broadcast)
+        public override bool addIncomingTransaction(Transaction tx)
         {
-            return addTransaction(null, tx, relayNodeAddresses, force_broadcast);
-        }
-
-        public static bool addTransaction(Address senderAddress, Transaction tx, List<Address> relayNodeAddresses, bool force_broadcast)
-        {
-            if (PendingTransactions.addPendingLocalTransaction(tx, null, null, senderAddress))
+            if (tx.timeStamp == 0)
             {
-                CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
-                if (tx.timeStamp == 0)
-                {
-                    tx.timeStamp = Clock.getTimestamp();
-                }
-                addTransactionToActivityStorage(tx);
-                return true;
+                tx.timeStamp = Clock.getTimestamp();
+            }
+            if (IxianHandler.addTransactionToActivityStorage(activityStorage, tx))
+            {
+                return PendingTransactions.addIncomingTransaction(tx);
             }
             return false;
         }
 
-        public override Block getLastBlock()
+        public override bool addTransaction(Transaction tx, List<Address> relayNodeAddresses, List<ExtendedAddress>? extendedAddresses, byte[]? requestId, bool force_broadcast)
+        {
+            return addTransaction(null, tx, relayNodeAddresses, extendedAddresses, requestId, force_broadcast);
+        }
+
+        public static bool addTransaction(Address? senderAddress, Transaction tx, List<Address> relayNodeAddresses, List<ExtendedAddress>? extendedAddresses, byte[]? requestId, bool force_broadcast)
+        {
+            if (tx.timeStamp == 0)
+            {
+                tx.timeStamp = Clock.getTimestamp();
+            }
+            if (IxianHandler.addTransactionToActivityStorage(activityStorage, tx))
+            {
+                if (PendingTransactions.addOutgoingTransaction(tx, null, senderAddress))
+                {
+                    CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+
+                    if (extendedAddresses != null)
+                    {
+                        CoreStreamProcessor.transactionSend(tx, extendedAddresses, requestId);
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public override Block? getLastBlock()
         {
             return tiv.getLastBlockHeader();
         }
@@ -512,136 +579,9 @@ namespace S2.Meta
             ProtocolMessage.parseProtocolMessage(code, data, endpoint);
         }
 
-        public static void addTransactionToActivityStorage(Transaction transaction)
+        public override Block? getBlockHeader(ulong blockNum)
         {
-            ActivityObject activity = null;
-            ActivityType type;
-            IxiNumber value = transaction.amount;
-            Dictionary<byte[], List<byte[]>> wallet_list = null;
-            Address wallet = null;
-            Address primary_address = transaction.pubKey;
-
-            ActivityStatus status = ActivityStatus.Pending;
-            if (transaction.applied > 0)
-            {
-                status = ActivityStatus.Final;
-            }
-
-            if (IxianHandler.isMyAddress(primary_address))
-            {
-                // We are the sender
-                wallet = primary_address;
-                type = ActivityType.TransactionSent;
-                if (transaction.type == (int)Transaction.Type.PoWSolution)
-                {
-                    type = ActivityType.MiningReward;
-                    value = ConsensusConfig.calculateMiningRewardForBlock(transaction.powSolution.blockNum);
-                }
-                else if (transaction.type == (int)Transaction.Type.RegName)
-                {
-                    type = ActivityType.IxiName;
-                }
-
-                activity = new ActivityObject(IxianHandler.getWalletStorageBySecondaryAddress(primary_address).getSeedHash(),
-                                wallet,
-                                transaction.id,
-                                transaction.toList.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.amount),
-                                type,
-                                null,
-                                value,
-                                transaction.timeStamp,
-                                status,
-                                transaction.applied);
-                activityStorage.insertActivity(activity);
-            }
-            else
-            {
-                wallet_list = IxianHandler.extractMyAddressesFromAddressList(transaction.toList);
-                if (wallet_list != null)
-                {
-                    // We are the recipient
-                    type = ActivityType.TransactionReceived;
-                    if (transaction.type == (int)Transaction.Type.StakingReward)
-                    {
-                        type = ActivityType.StakingReward;
-                    }
-
-                    foreach (var extractedWallet in wallet_list)
-                    {
-                        foreach (var addressBytes in extractedWallet.Value)
-                        {
-                            Address address = new Address(addressBytes);
-                            activity = new ActivityObject(extractedWallet.Key,
-                                                          address,
-                                                          transaction.id,
-                                                          transaction.fromList.ToDictionary(kvp => new Address(transaction.pubKey.addressNoChecksum, kvp.Key), kvp => kvp.Value),
-                                                          type,
-                                                          null,
-                                                          transaction.toList[address].amount,
-                                                          transaction.timeStamp,
-                                                          status,
-                                                          transaction.applied);
-                            activityStorage.insertActivity(activity);
-                        }
-                    }
-                }
-            }
-        }
-
-        public static void processPendingTransactions()
-        {
-            ulong last_block_height = IxianHandler.getLastBlockHeight();
-            lock (PendingTransactions.pendingTransactions)
-            {
-                long cur_time = Clock.getTimestamp();
-                List<PendingTransaction> tmp_pending_transactions = new(PendingTransactions.pendingTransactions);
-                foreach (var entry in tmp_pending_transactions)
-                {
-                    long tx_time = entry.addedTimestamp;
-
-                    if (entry.transaction.blockHeight > last_block_height)
-                    {
-                        // not ready yet, syncing to the network
-                        continue;
-                    }
-
-                    Transaction t = entry.transaction;
-
-                    // if transaction expired, remove it from pending transactions
-                    if (last_block_height > ConsensusConfig.getRedactedWindowSize()
-                        && t.blockHeight < last_block_height - ConsensusConfig.getRedactedWindowSize())
-                    {
-                        Logging.error("Error sending the transaction {0}, expired", t.getTxIdString());
-                        activityStorage.updateStatus(t.id, ActivityStatus.Error, 0);
-                        PendingTransactions.pendingTransactions.RemoveAll(x => x.transaction.id.SequenceEqual(t.id));
-                        continue;
-                    }
-
-                    if (entry.rejectedNodeList.Count() > 3
-                        && entry.rejectedNodeList.Count() > entry.confirmedNodeList.Count())
-                    {
-                        Logging.error("Error sending the transaction {0}, rejected", t.getTxIdString());
-                        activityStorage.updateStatus(t.id, ActivityStatus.Error, 0);
-                        PendingTransactions.pendingTransactions.RemoveAll(x => x.transaction.id.SequenceEqual(t.id));
-                        continue;
-                    }
-
-                    if (cur_time - tx_time > 60) // if the transaction is pending for over 60 seconds, resend
-                    {
-                        Logging.warn("Transaction {0} pending for a while, resending", t.getTxIdString());
-                        CoreProtocolMessage.broadcastProtocolMessage(new char[] { 'M', 'H' }, ProtocolMessageCode.transactionData2, t.getBytes(true, true), null);
-
-                        entry.addedTimestamp = cur_time;
-                        entry.confirmedNodeList.Clear();
-                        entry.rejectedNodeList.Clear();
-                    }
-                }
-            }
-        }
-
-        public override Block getBlockHeader(ulong blockNum)
-        {
-            return BlockHeaderStorage.getBlockHeader(blockNum);
+            return storage.getBlock(blockNum);
         }
 
         public override IxiNumber getMinSignerPowDifficulty(ulong blockNum, int curBlockVersion, long curBlockTimestamp)
@@ -650,9 +590,9 @@ namespace S2.Meta
             return ConsensusConfig.minBlockSignerPowDifficulty;
         }
 
-        public override byte[] getBlockHash(ulong blockNum)
+        public override byte[]? getBlockHash(ulong blockNum)
         {
-            Block b = getBlockHeader(blockNum);
+            Block? b = getBlockHeader(blockNum);
             if (b == null)
             {
                 return null;

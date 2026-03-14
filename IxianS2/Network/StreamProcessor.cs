@@ -169,12 +169,5 @@ namespace S2.Network
                 }
             }
         }
-
-
-        // Called periodically to clear the black list
-        public static void update()
-        {
-
-        }
     }
 }

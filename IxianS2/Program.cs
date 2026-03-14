@@ -2,21 +2,12 @@
 using IXICore.Meta;
 using IXICore.Utils;
 using S2.Meta;
-using System;
-using System.Diagnostics;
-using System.IO;
-using System.Reflection;
-using System.Threading;
 
 namespace S2
 {
     class Program
     {
-        private static Thread mainLoopThread;
-
-        private static Node node = null;
-
-        private static bool running = false;
+        private static Node? node = null;
 
         static void Main(string[] args)
         {
@@ -38,6 +29,11 @@ namespace S2
             // Read configuration from command line
             Config.init(args);
 
+            if (!Directory.Exists(Config.dataFolder))
+            {
+                Directory.CreateDirectory(Config.dataFolder);
+            }
+
             // Start logging
             if (!Logging.start(Config.logFolderPath, Config.logVerbosity))
             {
@@ -47,27 +43,23 @@ namespace S2
                 return;
             }
 
-            Console.CancelKeyPress += delegate (object sender, ConsoleCancelEventArgs e) {
+            Console.CancelKeyPress += delegate (object? sender, ConsoleCancelEventArgs e) {
                 ConsoleHelpers.verboseConsoleOutput = true;
                 Logging.consoleOutput = ConsoleHelpers.verboseConsoleOutput;
                 e.Cancel = true;
                 IxianHandler.forceShutdown = true;
             };
 
-            onStart(args);
-
-            if (Node.apiServer != null)
+            if (onStart(args))
             {
-                while (IxianHandler.forceShutdown == false)
-                {
-                    Thread.Sleep(1000);
-                }
+                mainLoop();
             }
+
             onStop();
 
         }
 
-        static void onStart(string[] args)
+        static bool onStart(string[] args)
         {
             // Set the logging options
             Logging.setOptions(Config.maxLogSize, Config.maxLogCount);
@@ -87,39 +79,24 @@ namespace S2
             if (IxianHandler.forceShutdown)
             {
                 Thread.Sleep(1000);
-                return;
+                return false;
             }
 
             // Start the actual S2 node
             node.start(Config.verboseOutput);
 
-            running = true;
-
-            if (mainLoopThread != null)
-            {
-                mainLoopThread.Interrupt();
-                mainLoopThread.Join();
-                mainLoopThread = null;
-            }
-
-            mainLoopThread = new Thread(mainLoop);
-            mainLoopThread.Name = "Main_Loop_Thread";
-            mainLoopThread.Start();
-
             if (ConsoleHelpers.verboseConsoleOutput)
                 Console.WriteLine("-----------\nPress Ctrl-C or use the /shutdown API to stop the S2 process at any time.\n");
+
+            return true;
         }
 
         static void mainLoop()
         {
-            while (running)
+            while (!IxianHandler.forceShutdown)
             {
                 try
                 {
-                    if (Node.update() == false)
-                    {
-                        IxianHandler.forceShutdown = true;
-                    }
                     if (!Console.IsInputRedirected && Console.KeyAvailable)
                     {
                         ConsoleKeyInfo key = Console.ReadKey();
@@ -129,8 +106,7 @@ namespace S2
                             ConsoleHelpers.verboseConsoleOutput = !ConsoleHelpers.verboseConsoleOutput;
                             Logging.consoleOutput = ConsoleHelpers.verboseConsoleOutput;
                             Console.CursorVisible = ConsoleHelpers.verboseConsoleOutput;
-                            if (ConsoleHelpers.verboseConsoleOutput == false)
-                                Node.statsConsoleScreen.clearScreen();
+                            Console.Clear();
                         }
                         else if (key.Key == ConsoleKey.Escape)
                         {
@@ -151,13 +127,10 @@ namespace S2
 
         static void onStop()
         {
-            running = false;
-
             // Stop the S2 node
             Node.stop();
 
             // Stop logging
-            Logging.flush();
             Logging.stop();
 
             Console.WriteLine("");
