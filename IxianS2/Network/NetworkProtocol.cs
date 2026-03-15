@@ -313,7 +313,7 @@ namespace S2.Network
                         byte[] headersBytes = new byte[reader.BaseStream.Length - reader.BaseStream.Position];
                         Buffer.BlockCopy(data, (int)reader.BaseStream.Position, headersBytes, 0, headersBytes.Length);
 
-                        Node.tiv.receivedBlockHeaders3(data, endpoint);
+                        Node.tiv.receivedBlockHeaders3(headersBytes, endpoint);
                     }
                 }
             }
