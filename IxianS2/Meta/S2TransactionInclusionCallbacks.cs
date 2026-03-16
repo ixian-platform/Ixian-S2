@@ -3,8 +3,6 @@ using IXICore.Activity;
 using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
-using System;
-using System.Linq;
 
 namespace S2.Meta
 {
@@ -30,7 +28,6 @@ namespace S2.Meta
             Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
         }
 
-
         public void receivedBlockHeader(Block block_header, bool verified)
         {
             foreach (Balance balance in IxianHandler.balances)
@@ -51,7 +48,12 @@ namespace S2.Meta
 
         public void blockReorg(Block blockHeader)
         {
-            Node.activityStorage.revertTransactionsByBlockHeight(blockHeader.blockNum);
+            var revertedTransactions = Node.activityStorage.revertTransactionsByBlockHeight(blockHeader.blockNum);
+            foreach (var revertedTx in revertedTransactions)
+            {
+                var activity = Node.activityStorage.getActivityById(revertedTx, null, true);
+                PendingTransactions.addOutgoingTransaction(activity.transaction, null);
+            }
         }
     }
 }
