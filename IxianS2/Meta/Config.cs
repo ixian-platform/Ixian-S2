@@ -446,7 +446,7 @@ namespace S2.Meta
 
             if (headersFolderPath == "")
             {
-                if (IxianHandler.networkType == NetworkType.main)
+                if (networkType == NetworkType.main)
                 {
                     headersFolderPath = Path.Combine(dataFolder, "headers");
                 }
@@ -458,7 +458,7 @@ namespace S2.Meta
 
             if (activityFolderPath == "")
             {
-                activityFolderPath = dataFolder;
+                activityFolderPath = Path.Combine(dataFolder, "activity");
             }
 
             if (logFolderPath == "")
