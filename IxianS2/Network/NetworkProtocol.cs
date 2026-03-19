@@ -23,7 +23,7 @@ namespace S2.Network
                                                                                                                                                { ProtocolMessageCode.getPIT2, new(new ByteArrayComparer()) },
                                                                                                                                                { ProtocolMessageCode.getNameRecord, new(new ByteArrayComparer()) },
                                                                                                                                                { ProtocolMessageCode.getTransaction3, new(new ByteArrayComparer()) },
-                                                                                                                                               { ProtocolMessageCode.getRelevantBlockTransactions, new(new ByteArrayComparer()) }};
+                                                                                                                                               { ProtocolMessageCode.getBlockHeaders4, new(new ByteArrayComparer()) }};
 
         static Dictionary<byte[], long> cachedSectors = new(new ByteArrayComparer());
         static Dictionary<byte[], (long timestamp, List<RegisteredNameDataRecord> nameRecords)> cachedNames = new(new ByteArrayComparer());
@@ -39,7 +39,7 @@ namespace S2.Network
             foreach (var prType in pendingRequests)
             {
                 int expiration = 30;
-                if (prType.Key == ProtocolMessageCode.getRelevantBlockTransactions)
+                if (prType.Key == ProtocolMessageCode.getBlockHeaders4)
                 {
                     expiration = 120;
                 }
@@ -136,8 +136,8 @@ namespace S2.Network
                         Node.tiv.receivedBlockHeaders3(data, endpoint);
                         break;
 
-                    case ProtocolMessageCode.compactBlockHeaders1:
-                        handleCompactBlockHeaders1(data, endpoint);
+                    case ProtocolMessageCode.blockHeaders4:
+                        handleBlockHeaders4(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.pitData2:
@@ -192,8 +192,8 @@ namespace S2.Network
                         handleGetPIT2(data, endpoint);
                         break;
 
-                    case ProtocolMessageCode.getRelevantBlockTransactions:
-                        handleGetRelevantBlockTransactions(data, endpoint);
+                    case ProtocolMessageCode.getBlockHeaders4:
+                        handleGetBlockHeaders4(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.getTransaction3:
@@ -233,14 +233,14 @@ namespace S2.Network
                     }
 
                     var tag = reader.ReadIxiBytes();
-                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, tag);
+                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getBlockHeaders4, tag);
                     if (pendingRequest != default)
                     {
                         byte[] txChunkData = new byte[data.Length - reader.BaseStream.Position];
                         Buffer.BlockCopy(data, (int)reader.BaseStream.Position, txChunkData, 0, txChunkData.Length);
                         foreach (var client in pendingRequest.endpoints)
                         {
-                            client.sendData(ProtocolMessageCode.compactBlockHeaders1, txChunkData);
+                            client.sendData(ProtocolMessageCode.blockHeaders4, txChunkData);
                         }
                         return;
                     }
@@ -285,7 +285,7 @@ namespace S2.Network
             }
         }
 
-        static void handleCompactBlockHeaders1(byte[] data, RemoteEndpoint endpoint)
+        static void handleBlockHeaders4(byte[] data, RemoteEndpoint endpoint)
         {
             using (MemoryStream m = new MemoryStream(data))
             {
@@ -300,12 +300,12 @@ namespace S2.Network
                     byte[] prKey = new byte[reader.BaseStream.Position];
                     Buffer.BlockCopy(data, 0, prKey, 0, prKey.Length);
 
-                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, prKey);
+                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getBlockHeaders4, prKey);
                     if (pendingRequest != default)
                     {
                         foreach (var client in pendingRequest.endpoints)
                         {
-                            client.sendData(ProtocolMessageCode.compactBlockHeaders1, data);
+                            client.sendData(ProtocolMessageCode.blockHeaders4, data);
                         }
                     }
                     else
@@ -362,7 +362,7 @@ namespace S2.Network
                     prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
                 }
             }
-            else if (pendingRequests[ProtocolMessageCode.getRelevantBlockTransactions].TryGetValue(filterWithOffset.bytes, out pendingRequest))
+            else if (pendingRequests[ProtocolMessageCode.getBlockHeaders4].TryGetValue(filterWithOffset.bytes, out pendingRequest))
             {
                 foreach (var prEndpoint in pendingRequest.endpoints)
                 {
@@ -758,7 +758,7 @@ namespace S2.Network
             NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBalance2, data, null);
         }
 
-        public static void handleGetRelevantBlockTransactions(byte[] data, RemoteEndpoint endpoint)
+        public static void handleGetBlockHeaders4(byte[] data, RemoteEndpoint endpoint)
         {
             using (MemoryStream m = new MemoryStream(data))
             using (BinaryReader reader = new BinaryReader(m))
@@ -771,8 +771,8 @@ namespace S2.Network
                 byte[] prKey = new byte[reader.BaseStream.Position];
                 Buffer.BlockCopy(data, 0, prKey, 0, prKey.Length);
 
-                addPendingRequest(ProtocolMessageCode.getRelevantBlockTransactions, prKey, endpoint);
-                NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getRelevantBlockTransactions, data, null);
+                addPendingRequest(ProtocolMessageCode.getBlockHeaders4, prKey, endpoint);
+                NetworkClientManager.broadcastData(['M', 'H'], ProtocolMessageCode.getBlockHeaders4, data, null);
             }
         }
 

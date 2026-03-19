@@ -236,7 +236,7 @@ namespace S2.Meta
             // Start the network queue
             NetworkQueue.start();
 
-            if (!storage.prepareStorage(true))
+            if (!storage.prepareStorage(false))
             {
                 Logging.error("Error while preparing block storage! Aborting.");
                 IxianHandler.forceShutdown = true;
@@ -426,13 +426,10 @@ namespace S2.Meta
                             if (balance.blockHeight == 0 || balance.lastUpdate + 300 < Clock.getTimestamp())
                             {
                                 using (MemoryStream mw = new MemoryStream())
+                                using (BinaryWriter writer = new BinaryWriter(mw))
                                 {
-                                    using (BinaryWriter writer = new BinaryWriter(mw))
-                                    {
-                                        writer.WriteIxiVarInt(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum.Length);
-                                        writer.Write(IxianHandler.getWalletStorage().getPrimaryAddress().addressNoChecksum);
-                                        NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getBalance2, mw.ToArray(), null);
-                                    }
+                                    writer.WriteIxiBytes(balance.address.addressNoChecksum);
+                                    NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getBalance2, mw.ToArray(), null);
                                 }
 
                                 if (firstBalance)
