@@ -583,8 +583,7 @@ namespace S2.Meta
 
         public override IxiNumber getMinSignerPowDifficulty(ulong blockNum, int curBlockVersion, long curBlockTimestamp)
         {
-            // TODO TODO implement this properly
-            return ConsensusConfig.minBlockSignerPowDifficulty;
+            return Node.tiv.getMinSignerPowDifficulty(blockNum, curBlockVersion, curBlockTimestamp);
         }
 
         public override byte[]? getBlockHash(ulong blockNum)
