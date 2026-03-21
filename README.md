@@ -8,7 +8,7 @@ with built-in support for **scalable presence** and **fair monetization models**
 
 ---
 
-## 🚀 Why Ixian S2?
+## <img src="IxianS2/IxianS2.ico" alt="Ixian Logo" width="24" height="24"> Why Ixian S2?
 
 Ixian S2 is built to replace centralized communication servers with a **decentralized overlay network** that scales.
 
