@@ -571,7 +571,7 @@ namespace S2.Network
         private static void handleUpdatePresence(byte[] data, RemoteEndpoint endpoint)
         {
             // Parse the data and update entries in the presence list
-            Presence updatedPresence = PresenceList.updateFromBytes(data, 0);
+            Presence updatedPresence = PresenceList.updateFromBytes(data, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight(), IxianHandler.getLastBlockVersion(), 0));
 
             // If a presence entry was updated, broadcast this message again
             if (updatedPresence != null)
@@ -821,7 +821,7 @@ namespace S2.Network
                 var kaBytesAndOffset = data.ReadIxiBytes(offset);
                 offset += kaBytesAndOffset.bytesRead;
 
-                Presence p = PresenceList.updateFromBytes(kaBytesAndOffset.bytes, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight() + 1, IxianHandler.getLastBlockVersion(), Clock.getNetworkTimestamp()));
+                Presence p = PresenceList.updateFromBytes(kaBytesAndOffset.bytes, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight(), IxianHandler.getLastBlockVersion(), 0));
                 if (p != null)
                 {
                     RelaySectors.Instance.addRelayNode(p.wallet);

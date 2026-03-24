@@ -69,15 +69,15 @@ namespace S2.Meta
             // Initialize storage
             if (storage is null)
             {
-                storage = new RocksDBStorage(Config.headersFolderPath, Config.rocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50);
+                storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers);
             }
 
-            activityStorage = new ActivityStorage(Config.activityFolderPath, Config.rocksDbCacheSize, 0);
+            activityStorage = new ActivityStorage(Config.activityFolderPath, Config.activityDbCacheSize, 0, RocksDBOptimizations.Servers);
 
             PeerStorage.init(Config.dataFolder);
 
             // Init TIV
-            tiv = new TransactionInclusion(storage, new S2TransactionInclusionCallbacks(), TIVBlockVerificationMode.Signatures);
+            tiv = new TransactionInclusion(storage, new S2TransactionInclusionCallbacks(), TIVBlockVerificationMode.Transactions);
 
             InventoryCache.init(new InventoryCacheS2(tiv));
 
@@ -381,7 +381,7 @@ namespace S2.Meta
         {
             if (activityStorage is null)
             {
-                activityStorage = new ActivityStorage(Config.activityFolderPath, Config.rocksDbCacheSize, 0);
+                activityStorage = new ActivityStorage(Config.activityFolderPath, Config.activityDbCacheSize, 0, RocksDBOptimizations.Servers);
             }
             activityStorage.stopStorage();
             activityStorage.deleteData();
@@ -389,7 +389,7 @@ namespace S2.Meta
 
             if (storage is null)
             {
-                storage = new RocksDBStorage(Config.headersFolderPath, Config.rocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50);
+                storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers);
             }
             storage.deleteData();
 

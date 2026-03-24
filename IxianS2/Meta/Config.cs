@@ -91,7 +91,8 @@ namespace S2.Meta
 
         public static byte[] checksumLock = null;
 
-        public static ulong rocksDbCacheSize = 32 << 20;
+        public static ulong activityDbCacheSize = 128 << 20;
+        public static ulong blocksDbCacheSize = 512 << 20;
 
         private Config()
         {
@@ -128,6 +129,8 @@ namespace S2.Meta
             Console.WriteLine("    --headersFolderPath\t Location where to store block header data.");
             Console.WriteLine("    --activityFolderPath Location where to store activity files.");
             Console.WriteLine("    --dataFolderPath\t Root location where to store data.");
+            Console.WriteLine("    --blocksDbCache\t\t Max RAM in bytes to use for RocksDB Blocks Cache.");
+            Console.WriteLine("    --activityDbCache\t\t Max RAM in bytes to use for Activity Cache.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
@@ -166,6 +169,8 @@ namespace S2.Meta
             Console.WriteLine("    networkType\t\t Network type - mainnet, testnet or regtest.");
             Console.WriteLine("    wallet\t\t Specify location of the ixian.wal file");
             Console.WriteLine("    walletPassword\t Specify the password for the wallet.");
+            Console.WriteLine("    activityFolderPath\t\t Location where to store activity files.");
+            Console.WriteLine("    blocksDbCache\t\t Max RAM in bytes to use for RocksDB Blocks Cache.");
 
             Environment.Exit(0);
         }
@@ -310,6 +315,12 @@ namespace S2.Meta
                     case "walletPassword":
                         dangerCommandlinePasswordCleartextUnsafe = value;
                         break;
+                    case "blocksDbCache":
+                        blocksDbCacheSize = ulong.Parse(value);
+                        break;
+                    case "activityDbCache":
+                        activityDbCacheSize = ulong.Parse(value);
+                        break;
                     default:
                         // unknown key
                         Logging.warn("Unknown config parameter was specified '" + key + "'");
@@ -399,6 +410,9 @@ namespace S2.Meta
 
             cmd_parser.Setup<string>("dataFolderPath").Callback(value => dataFolder = value).Required();
 
+            cmd_parser.Setup<long>("blocksDbCache").Callback(value => blocksDbCacheSize = (ulong)value);
+
+            cmd_parser.Setup<long>("activityDbCache").Callback(value => activityDbCacheSize = (ulong)value);
 
             // Debug
             cmd_parser.Setup<string>("netdump").Callback(value => networkDumpFile = value).SetDefault("");
