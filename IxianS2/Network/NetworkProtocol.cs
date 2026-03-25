@@ -429,7 +429,7 @@ namespace S2.Network
                                     long rollback_len = mOut.Length;
 
                                     found = true;
-                                    byte[] headerBytes = block.getBytes(true, true, true, true);
+                                    byte[] headerBytes = block.getBytes(true, true, true, false, true, false);
                                     writer.WriteIxiVarInt(headerBytes.Length);
                                     writer.Write(headerBytes);
 
