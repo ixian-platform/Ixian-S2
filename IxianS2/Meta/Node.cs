@@ -588,13 +588,8 @@ namespace S2.Meta
 
         public override byte[]? getBlockHash(ulong blockNum)
         {
-            Block? b = getBlockHeader(blockNum);
-            if (b == null)
-            {
-                return null;
-            }
-
-            return b.blockChecksum;
+            var tsd = storage.getBlockTotalSignerDifficulty(blockNum);
+            return tsd.blockHash;
         }
 
         public override RegisteredNameRecord getRegName(byte[] name, bool useAbsoluteId)

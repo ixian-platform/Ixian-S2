@@ -28,22 +28,43 @@ namespace S2.Meta
             Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
         }
 
-        public void receivedBlockHeader(Block block_header, bool verified)
+        public void receivedBlockHeader(Block blockHeader, bool verified)
         {
             foreach (Balance balance in IxianHandler.balances)
             {
-                if (balance.blockChecksum != null && balance.blockChecksum.SequenceEqual(block_header.blockChecksum))
+                if (balance.blockChecksum != null && balance.blockChecksum.SequenceEqual(blockHeader.blockChecksum))
                 {
                     balance.verified = true;
                 }
             }
 
-            if (block_header.blockNum + 10 >= IxianHandler.getHighestKnownNetworkBlockHeight())
+            if (blockHeader.blockNum + 10 >= IxianHandler.getHighestKnownNetworkBlockHeight())
             {
                 IxianHandler.status = NodeStatus.ready;
             }
 
-            NetworkServer.addToInventory(['C'], new InventoryItemBlock(block_header.blockChecksum, block_header.blockNum), null);
+            if (blockHeader.lastSuperBlockNum != 0)
+            {
+                ulong fullBlocksToKeep = 4000;
+                if (blockHeader.blockNum > fullBlocksToKeep)
+                {
+                    ulong pruneBlocksBelow = blockHeader.blockNum - fullBlocksToKeep;
+                    Logging.info("Pruning block signatures up to block " + pruneBlocksBelow + " at height " + blockHeader.blockNum);
+                    Node.storage.pruneBlocks(pruneBlocksBelow, IXICore.Storage.BlockSigPruningType.Signatures, false);
+                    Logging.info("Pruning TxIDs up to block " + pruneBlocksBelow + " at height " + blockHeader.blockNum);
+                    Node.storage.pruneTxIDs(pruneBlocksBelow);
+                }
+
+                ulong PoCWBlocksToKeep = 100000;
+                if (blockHeader.blockNum > PoCWBlocksToKeep)
+                {
+                    ulong pruneBlocksBelow = blockHeader.blockNum - PoCWBlocksToKeep;
+                    Logging.info("Pruning block PoCW up to block " + pruneBlocksBelow + " at height " + blockHeader.blockNum);
+                    Node.storage.pruneBlocks(pruneBlocksBelow, IXICore.Storage.BlockSigPruningType.PoCW, false);
+                }
+            }
+
+            NetworkServer.addToInventory(['C'], new InventoryItemBlock(blockHeader.blockChecksum, blockHeader.blockNum), null);
         }
 
         public void blockReorg(Block blockHeader)
