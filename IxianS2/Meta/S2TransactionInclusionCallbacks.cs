@@ -43,7 +43,7 @@ namespace S2.Meta
                 IxianHandler.status = NodeStatus.ready;
             }
 
-            if (blockHeader.lastSuperBlockNum != 0)
+            if (blockHeader.blockNum % CoreConfig.maxBlockHeadersPerDatabase == 0)
             {
                 ulong fullBlocksToKeep = 4000;
                 if (blockHeader.blockNum > fullBlocksToKeep)
