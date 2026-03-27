@@ -391,7 +391,9 @@ namespace S2.Meta
             {
                 storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers);
             }
+            storage.stopStorage();
             storage.deleteData();
+            storage.prepareStorage(false);
 
             PeerStorage.deletePeersFile();
 

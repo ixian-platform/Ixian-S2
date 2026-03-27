@@ -99,8 +99,8 @@ namespace S2.Meta
             Console.WriteLine("Starts a new instance of Ixian S2 Node");
             Console.WriteLine("");
             Console.WriteLine(" IxianS2.exe [-h] [-v] [-t] [-x] [-c] [-p 10234] [-a 8081] [-i ip] [-w ixian.wal] [-n seed1.ixian.io:10234]");
-            Console.WriteLine(" [--config ixian.cfg] [--maxLogSize 50] [--maxLogCount 10]  [--logVerbosity 14] [--disableWebStart]");
-            Console.WriteLine(" [--netdump] [--generateWallet] [--walletPassword] [--checksumLock Ixian] [--verboseOutput]");
+            Console.WriteLine(" [--config ixian.cfg] [--maxLogSize 50] [--maxLogCount 10] [--logVerbosity 14] [--disableWebStart]");
+            Console.WriteLine(" [--netdump] [--generateWallet] [--checksumLock Ixian] [--verboseOutput]");
             Console.WriteLine("");
             Console.WriteLine("    -h\t\t\t Displays this help");
             Console.WriteLine("    -v\t\t\t Displays version");
@@ -124,13 +124,13 @@ namespace S2.Meta
             Console.WriteLine("    --headersFolderPath\t Location where to store block header data.");
             Console.WriteLine("    --activityFolderPath Location where to store activity files.");
             Console.WriteLine("    --dataFolderPath\t Root location where to store data.");
-            Console.WriteLine("    --blocksDbCache\t\t Max RAM in bytes to use for RocksDB Blocks Cache.");
-            Console.WriteLine("    --activityDbCache\t\t Max RAM in bytes to use for Activity Cache.");
+            Console.WriteLine("    --blocksDbCache\t Max RAM in bytes to use for RocksDB Blocks Cache.");
+            Console.WriteLine("    --activityDbCache\t Max RAM in bytes to use for Activity Cache.");
             Console.WriteLine("");
             Console.WriteLine("----------- Developer CLI flags -----------");
             Console.WriteLine("    --netdump\t\t Enable netdump for debugging purposes");
             Console.WriteLine("    --generateWallet\t Generates a wallet file and exits, printing the public address. [TESTNET ONLY!]");
-            Console.WriteLine("    --walletPassword\t Specify the password for the wallet. [TESTNET ONLY!]");
+            Console.WriteLine("    --walletPassword\t Specify the password for the wallet.");
             Console.WriteLine("");
             Console.WriteLine("----------- Config File Options -----------");
             Console.WriteLine(" Config file options should use parameterName = parameterValue semantics.");
@@ -162,10 +162,10 @@ namespace S2.Meta
             Console.WriteLine("    dataFolderPath\t Root location where to store data.");
             Console.WriteLine("    checksumLock\t Sets the checksum lock for seeding checksums - useful for custom networks.");
             Console.WriteLine("    networkType\t\t Network type - mainnet, testnet or regtest.");
+            Console.WriteLine("    blocksDbCache\t Max RAM in bytes to use for RocksDB Blocks Cache.");
+            Console.WriteLine("    activityDbCache\t Max RAM in bytes to use for Activity Cache.");
             Console.WriteLine("    wallet\t\t Specify location of the ixian.wal file");
             Console.WriteLine("    walletPassword\t Specify the password for the wallet.");
-            Console.WriteLine("    activityFolderPath\t\t Location where to store activity files.");
-            Console.WriteLine("    blocksDbCache\t\t Max RAM in bytes to use for RocksDB Blocks Cache.");
 
             Environment.Exit(0);
         }
