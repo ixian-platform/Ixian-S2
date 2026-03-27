@@ -233,14 +233,13 @@ namespace S2.Network
                     }
 
                     var tag = reader.ReadIxiBytes();
-                    var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getBlockHeaders4, tag);
-                    if (pendingRequest != default)
+                    if (pendingRequests[ProtocolMessageCode.getBlockHeaders4].TryGetValue(tag, out var pendingRequest))
                     {
                         byte[] txChunkData = new byte[data.Length - reader.BaseStream.Position];
                         Buffer.BlockCopy(data, (int)reader.BaseStream.Position, txChunkData, 0, txChunkData.Length);
-                        foreach (var client in pendingRequest.endpoints)
+                        foreach (var prEndpoint in pendingRequest.endpoints)
                         {
-                            client.sendData(ProtocolMessageCode.blockHeaders4, txChunkData);
+                            prEndpoint.sendData(ProtocolMessageCode.transactionsChunk3, txChunkData);
                         }
                         return;
                     }
@@ -361,6 +360,7 @@ namespace S2.Network
                 {
                     prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
                 }
+                return;
             }
             else if (pendingRequests[ProtocolMessageCode.getBlockHeaders4].TryGetValue(filterWithOffset.bytes, out pendingRequest))
             {
@@ -368,6 +368,7 @@ namespace S2.Network
                 {
                     prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
                 }
+                return;
             }
 
             Node.tiv.receivedPIT2(pitData, endpoint);
