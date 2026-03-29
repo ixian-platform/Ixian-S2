@@ -250,14 +250,11 @@ namespace S2.Meta
             // Load pending transactions
             foreach (var pending_tx in pending_txs)
             {
-                if (pending_tx.type == ActivityType.TransactionReceived)
+                if (pending_tx.type == ActivityType.TransactionReceived
+                    || pending_tx.type == ActivityType.TransactionSent
+                    || pending_tx.type == ActivityType.IxiName)
                 {
-                    PendingTransactions.addIncomingTransaction(pending_tx.transaction);
-                }
-                else if (pending_tx.type == ActivityType.TransactionSent
-                        || pending_tx.type == ActivityType.IxiName)
-                {
-                    PendingTransactions.addOutgoingTransaction(pending_tx.transaction, pending_tx.transaction.toList.TakeLast(2).Select(x => x.Key).ToList());
+                    PendingTransactions.addOutgoingTransaction(pending_tx.transaction, null);
                 }
             }
 

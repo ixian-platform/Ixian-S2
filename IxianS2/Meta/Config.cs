@@ -467,7 +467,14 @@ namespace S2.Meta
 
             if (activityFolderPath == "")
             {
-                activityFolderPath = Path.Combine(dataFolder, "activity");
+                if (networkType == NetworkType.main)
+                {
+                    activityFolderPath = Path.Combine(dataFolder, "activity");
+                }
+                else
+                {
+                    activityFolderPath = Path.Combine(dataFolder, "testnet-activity");
+                }
             }
 
             if (logFolderPath == "")
