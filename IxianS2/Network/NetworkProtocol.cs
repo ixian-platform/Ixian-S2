@@ -575,7 +575,7 @@ namespace S2.Network
                 return;
             }
 
-            Logging.info("Received presence update for " + updatedPresence.wallet);
+            Logging.trace("Received presence update for " + updatedPresence.wallet);
             Friend f = FriendList.getFriend(updatedPresence.wallet);
             if (f != null)
             {

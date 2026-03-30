@@ -3,7 +3,6 @@ using IXICore.Activity;
 using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
-using IXICore.Utils;
 
 namespace S2.Meta
 {
@@ -11,12 +10,26 @@ namespace S2.Meta
     {
         public void transactionVerified(Transaction tx)
         {
-            IxianHandler.balances.First().lastUpdate = 0;
-
             var bh = IxianHandler.getBlockHeader(tx.applied);
             Node.activityStorage.updateStatus(tx.id, ActivityStatus.Final, tx.applied, bh.timestamp);
 
-            CoreProtocolMessage.broadcastProtocolMessage(['M', 'H'], ProtocolMessageCode.getBalance2, tx.pubKey.addressNoChecksum.GetIxiBytes(), null);
+            if (IxianHandler.isMyAddress(tx.pubKey))
+            {
+                foreach (var fromEntry in tx.fromList)
+                {
+                    IxianHandler.balances.FirstOrDefault(x => x.address != null && x.address.SequenceEqual(new Address(tx.pubKey.getInputBytes(), fromEntry.Key)))?.lastUpdate = 0;
+                }
+            }
+            else
+            {
+                foreach (var toEntry in tx.toList)
+                {
+                    if (IxianHandler.isMyAddress(toEntry.Key))
+                    {
+                        IxianHandler.balances.FirstOrDefault(x => x.address != null && x.address.SequenceEqual(toEntry.Key))?.lastUpdate = 0;
+                    }
+                }
+            }
         }
 
         public void transactionRejected(Transaction tx)
