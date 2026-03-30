@@ -3,6 +3,7 @@ using IXICore.Activity;
 using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
+using IXICore.Utils;
 
 namespace S2.Meta
 {
@@ -14,6 +15,13 @@ namespace S2.Meta
 
             var bh = IxianHandler.getBlockHeader(tx.applied);
             Node.activityStorage.updateStatus(tx.id, ActivityStatus.Final, tx.applied, bh.timestamp);
+
+            using (MemoryStream mw = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(mw))
+            {
+                writer.WriteIxiBytes(tx.pubKey.addressNoChecksum);
+                CoreProtocolMessage.broadcastProtocolMessage(['M', 'H'], ProtocolMessageCode.getBalance2, mw.ToArray(), null);
+            }
         }
 
         public void transactionRejected(Transaction tx)

@@ -1,9 +1,7 @@
 ﻿using IXICore;
 using IXICore.Meta;
 using IXICore.Network;
-using System;
-using System.Collections.Generic;
-using System.IO;
+using IXICore.Streaming;
 
 namespace S2.Network
 {
@@ -13,48 +11,85 @@ namespace S2.Network
         public Transaction transaction;
     }
 
-
-    class StreamProcessor
+    class StreamProcessor : CoreStreamProcessor
     {
-        static List<StreamTransaction> transactions = new List<StreamTransaction>(); // List that stores stream transactions
+        public static ulong bytesForRelayReceived = 0;
+        public static ulong bytesRelayed = 0;
+        List<StreamTransaction> transactions = new List<StreamTransaction>(); // List that stores stream transactions
+
+        public StreamProcessor(PendingMessageProcessor pendingMessageProcessor, StreamCapabilities streamCapabilites) : base(pendingMessageProcessor, streamCapabilites)
+        {
+        }
 
         // Called when receiving S2 data from clients
-        public static void receiveData(byte[] bytes, RemoteEndpoint endpoint)
+        public override ReceiveDataResponse? receiveData(byte[] bytes, RemoteEndpoint endpoint, bool fireLocalNotification = true, bool alert = true)
         {
             string endpoint_wallet_string = endpoint.presence.wallet.ToString();
-            Logging.info(string.Format("Receiving S2 data from {0}", endpoint_wallet_string));
+            Logging.trace("Receiving S2 data from {0}", endpoint_wallet_string);
 
             StreamMessage message = new StreamMessage(bytes);
-
-            // Don't allow clients to send error stream messages, as it's reserved for S2 nodes only
-            if(message.type == StreamMessageCode.error)
-            {
-                Logging.warn(string.Format("Discarding error message type from {0}", endpoint_wallet_string));
-                return;
-            }
-
-            // TODO: commented for development purposes ONLY!
-            /*if (QuotaManager.exceededQuota(endpoint.presence.wallet))
-            {
-                Logging.error(string.Format("Exceeded quota of info relay messages for {0}", endpoint_wallet_string));
-                sendError(endpoint.presence.wallet);
-                return;
-            }*/
 
             bool data_message = false;
             if (message.type == StreamMessageCode.data)
                 data_message = true;
 
             QuotaManager.addActivity(endpoint.presence.wallet, data_message);
-
-            // Relay certain messages without transaction
-            if(!NetworkServer.forwardMessage(message.recipient, ProtocolMessageCode.s2data, bytes))
+            bytesForRelayReceived += (ulong)bytes.Length;
+            if (!IxianHandler.isMyAddress(message.recipient))
             {
-                // Couldn't forward the message, send failed to client
-                CoreProtocolMessage.sendStreamError(message.sender, message.recipient, message.id, endpoint);
-                return;
+                // Don't allow clients to send error stream messages, as it's reserved for S2 nodes only
+                if (message.type == StreamMessageCode.error)
+                {
+                    Logging.warn("Discarding error message type from {0}", endpoint_wallet_string);
+                    return null;
+                }
+
+                // TODO: commented for development purposes ONLY!
+                /*if (QuotaManager.exceededQuota(endpoint.presence.wallet))
+                {
+                    Logging.error(string.Format("Exceeded quota of info relay messages for {0}", endpoint_wallet_string));
+                    sendError(endpoint.presence.wallet);
+                    return;
+                }*/
+
+                if (!NetworkServer.forwardMessage(message.recipient, ProtocolMessageCode.s2data, bytes))
+                {
+                    // Couldn't forward the message, send failed to client
+                    CoreProtocolMessage.sendStreamError(message.sender, message.recipient, message.id, endpoint);
+                    return null;
+                }
+                bytesRelayed += (ulong)bytes.Length;
+                return null;
             }
 
+            ReceiveDataResponse? rdr = base.receiveData(bytes, endpoint, false);
+            if (rdr == null)
+            {
+                return rdr;
+            }
+
+            SpixiMessage spixi_message = rdr.spixiMessage;
+            Friend friend = rdr.friend;
+            Address sender_address = rdr.senderAddress;
+            Address real_sender_address = rdr.realSenderAddress;
+
+            if (friend != null)
+            {
+                if (endpoint != null)
+                {
+                    // Update friend's last seen and relay if outgoing stream capabilities are disabled
+                    if ((streamCapabilities & StreamCapabilities.Outgoing) == 0)
+                    {
+                        friend.updatedStreamingNodes = Clock.getNetworkTimestamp();
+                        friend.relayNode = new Peer(endpoint.getFullAddress(true), endpoint.serverWalletAddress, Clock.getTimestamp(), Clock.getTimestamp(), Clock.getTimestamp(), 0);
+                        friend.updatedStreamingNodes = friend.relayNode.lastSeen;
+                        friend.lastSeenTime = friend.relayNode.lastSeen; 
+                        friend.online = true;
+                    }
+                }
+            }
+
+            return rdr;
             // TODO: commented for development purposes ONLY!
             /*
                         // Extract the transaction
@@ -125,7 +160,7 @@ namespace S2.Network
         }
 
         // Called when receiving a transaction signature from a client
-        public static void receivedTransactionSignature(byte[] bytes, RemoteEndpoint endpoint)
+        public void receivedTransactionSignature(byte[] bytes, RemoteEndpoint endpoint)
         {
             using (MemoryStream m = new MemoryStream(bytes))
             {

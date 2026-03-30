@@ -82,6 +82,8 @@ namespace S2.Meta
         public static int maxRelaySectorNodesToRequest = 8;
         public static int maxRelaySectorNodesToConnectTo = 6;
 
+        public static int maxConnectedStreamingNodes = 6;
+
         public static bool verboseOutput = false;
 
         public static byte[] checksumLock = null;

@@ -22,6 +22,8 @@ namespace S2.Meta
 
         public static TransactionInclusion tiv = null;
 
+        public static StreamProcessor streamProcessor = null;
+
         public static NetworkClientManagerStatic networkClientManagerStatic = null;
         public static NetworkClientManagerRandomized networkClientManagerRandomized = null;
 
@@ -64,6 +66,8 @@ namespace S2.Meta
             // Network configuration
             NetworkUtils.configureNetwork(Config.externalIp, Config.serverPort);
 
+            FriendList.init(Config.dataFolder, false);
+
             UpdateVerify.init(Config.checkVersionUrl, Config.checkVersionSeconds);
 
             // Initialize storage
@@ -76,8 +80,16 @@ namespace S2.Meta
 
             PeerStorage.init(Config.dataFolder);
 
+            // Prepare the stream processor
+            streamProcessor = new StreamProcessor(new ICPendingMessageProcessor(Config.dataFolder, false), StreamCapabilities.Incoming);
+
             // Init TIV
             tiv = new TransactionInclusion(storage, new S2TransactionInclusionCallbacks(), TIVBlockVerificationMode.Transactions);
+
+            Logging.info("Initing local storage");
+
+            // Prepare the local storage
+            IxianHandler.localStorage = new LocalStorage(Config.dataFolder, new ICLocalStorageCallbacks());
 
             InventoryCache.init(new InventoryCacheS2(tiv));
 
@@ -228,6 +240,11 @@ namespace S2.Meta
 
             running = true;
 
+            // Start local storage
+            IxianHandler.localStorage.start();
+
+            FriendList.loadContacts();
+
             UpdateVerify.start();
 
             // Generate presence list
@@ -235,6 +252,8 @@ namespace S2.Meta
 
             // Start the network queue
             NetworkQueue.start();
+
+            streamProcessor.start();
 
             if (!storage.prepareStorage(false))
             {
@@ -294,6 +313,9 @@ namespace S2.Meta
             NetworkClientManager.start(1);
             networkClientManagerStatic.start(0);
 
+            // Start the s2 client manager
+            StreamClientManager.start(Config.maxConnectedStreamingNodes, false);
+
             // Start the keepalive thread
             PresenceList.startKeepAlive();
 
@@ -321,6 +343,11 @@ namespace S2.Meta
             IxianHandler.forceShutdown = true;
 
             UpdateVerify.stop();
+
+            // Stop the stream processor
+            streamProcessor.stop();
+
+            IxianHandler.localStorage.stop();
 
             // Stop TIV
             tiv.stop();
@@ -357,6 +384,7 @@ namespace S2.Meta
             // Stop all network clients
             networkClientManagerStatic.stop();
             NetworkClientManager.stop();
+            StreamClientManager.stop();
 
             // Stop the network server
             NetworkServer.stopNetworkOperations();
@@ -413,6 +441,8 @@ namespace S2.Meta
                     try
                     {
                         PeerStorage.savePeersFile();
+                        // Update the friendlist
+                        updateFriendStatuses();
 
                         // Cleanup the presence list
                         PresenceList.performCleanup();
@@ -457,6 +487,45 @@ namespace S2.Meta
             }
             catch (ThreadInterruptedException)
             {
+            }
+        }
+
+        static public void updateFriendStatuses()
+        {
+            lock (FriendList.friends)
+            {
+                // Go through each friend and check for the pubkey in the PL
+                foreach (Friend friend in FriendList.friends)
+                {
+                    Presence? presence = null;
+
+                    try
+                    {
+                        presence = PresenceList.getPresenceByAddress(friend.walletAddress);
+                    }
+                    catch (Exception e)
+                    {
+                        Logging.error("Presence Error {0}", e.Message);
+                        presence = null;
+                    }
+
+                    if (presence != null)
+                    {
+                        if (friend.online == false
+                            && friend.relayNode != null)
+                        {
+                            friend.online = true;
+                        }
+                    }
+                    else
+                    {
+                        if (friend.online == true
+                            && Clock.getNetworkTimestamp() - friend.updatedStreamingNodes > CoreConfig.requestPresenceTimeout)
+                        {
+                            friend.online = false;
+                        }
+                    }
+                }
             }
         }
 

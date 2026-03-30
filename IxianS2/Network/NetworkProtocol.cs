@@ -5,12 +5,9 @@ using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Network.Messages;
 using IXICore.RegNames;
+using IXICore.Streaming;
 using IXICore.Utils;
 using S2.Meta;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Numerics;
 using static IXICore.Transaction;
 
@@ -96,7 +93,7 @@ namespace S2.Network
                         break;
 
                     case ProtocolMessageCode.s2data:
-                        StreamProcessor.receiveData(data, endpoint);
+                        Node.streamProcessor.receiveData(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.s2failed:
@@ -104,7 +101,7 @@ namespace S2.Network
                         break;
 
                     case ProtocolMessageCode.s2signature:
-                        StreamProcessor.receivedTransactionSignature(data, endpoint);
+                        Node.streamProcessor.receivedTransactionSignature(data, endpoint);
                         break;
 
                     case ProtocolMessageCode.transactionData2:
@@ -573,27 +570,46 @@ namespace S2.Network
         {
             // Parse the data and update entries in the presence list
             Presence updatedPresence = PresenceList.updateFromBytes(data, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight(), IxianHandler.getLastBlockVersion(), 0));
+            if (updatedPresence == null)
+            {
+                return;
+            }
+
+            Logging.info("Received presence update for " + updatedPresence.wallet);
+            Friend f = FriendList.getFriend(updatedPresence.wallet);
+            if (f != null)
+            {
+                if (f.publicKey == null)
+                {
+                    f.setPublicKey(updatedPresence.pubkey);
+                }
+                var pa = updatedPresence.addresses[0];
+                if (f.lastSeenTime < pa.lastSeenTime)
+                {
+                    // TODO use actual wallet address once Presence hostname contains such address
+                    f.relayNode = new Peer(pa.address, null, pa.lastSeenTime, 0, 0, 0);
+                    f.updatedStreamingNodes = pa.lastSeenTime;
+                    f.lastSeenTime = pa.lastSeenTime;
+                }
+            }
 
             // If a presence entry was updated, broadcast this message again
-            if (updatedPresence != null)
+            foreach (var pa in updatedPresence.addresses)
             {
-                foreach (var pa in updatedPresence.addresses)
+                byte[] hash = CryptoManager.lib.sha3_512sqTrunc(pa.getBytes());
+                var iika = new InventoryItemKeepAlive(hash, pa.lastSeenTime, updatedPresence.wallet, pa.device);
+
+                if (pa.type == 'R')
                 {
-                    byte[] hash = CryptoManager.lib.sha3_512sqTrunc(pa.getBytes());
-                    var iika = new InventoryItemKeepAlive(hash, pa.lastSeenTime, updatedPresence.wallet, pa.device);
-
-                    if (pa.type == 'R')
-                    {
-                        Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
-                        NetworkServer.addToInventory(['R'], iika, endpoint);
-                    }
-                    else if (pa.type == 'C')
-                    {
-                        sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
-                    }
-
-                    NetworkServer.addToInventorySubscribed(iika, endpoint);
+                    Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
+                    NetworkServer.addToInventory(['R'], iika, endpoint);
                 }
+                else if (pa.type == 'C')
+                {
+                    sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
+                }
+
+                NetworkServer.addToInventorySubscribed(iika, endpoint);
             }
         }
 
@@ -658,22 +674,42 @@ namespace S2.Network
             byte[] device_id = null;
             char node_type;
             bool updated = PresenceList.receiveKeepAlive(data, out address, out last_seen, out device_id, out node_type, endpoint);
-            if (updated)
+            if (!updated)
             {
-                var iika = new InventoryItemKeepAlive(hash, last_seen, address, device_id);
-                if (node_type == 'R')
-                {
-                    Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
-                    NetworkServer.addToInventory(['R'], iika, endpoint);
-                }
-                else if (node_type == 'C')
-                {
-                    sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
-                }
-
-                // Send this keepalive message to all subscribed clients
-                NetworkServer.addToInventorySubscribed(iika, endpoint);
+                return;
             }
+
+            Logging.trace("Received keepalive update for " + address);
+            Presence p = PresenceList.getPresenceByAddress(address);
+            if (p == null)
+                return;
+
+            Friend f = FriendList.getFriend(p.wallet);
+            if (f != null)
+            {
+                var pa = p.addresses[0];
+                if (f.lastSeenTime < pa.lastSeenTime)
+                {
+                    // TODO use actual wallet address once Presence hostname contains such address
+                    f.relayNode = new Peer(pa.address, null, pa.lastSeenTime, 0, 0, 0);
+                    f.updatedStreamingNodes = pa.lastSeenTime;
+                    f.lastSeenTime = pa.lastSeenTime;
+                }
+            }
+
+            var iika = new InventoryItemKeepAlive(hash, last_seen, address, device_id);
+            if (node_type == 'R')
+            {
+                Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
+                NetworkServer.addToInventory(['R'], iika, endpoint);
+            }
+            else if (node_type == 'C')
+            {
+                sendKeepAlivePresenceToNeighbourSectorNodes(iika, endpoint);
+            }
+
+            // Send this keepalive message to all subscribed clients
+            NetworkServer.addToInventorySubscribed(iika, endpoint);
         }
 
         private static void addPendingRequest(ProtocolMessageCode code, byte[] key, RemoteEndpoint endpoint)
@@ -831,28 +867,44 @@ namespace S2.Network
 
             cachedSectors.AddOrReplace(prefix, Clock.getTimestamp());
 
+            List<Peer> peers = new();
+            var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToConnectTo + 1);
+            foreach (var relay in relays)
+            {
+                var p = PresenceList.getPresenceByAddress(relay);
+                if (p == null)
+                {
+                    continue;
+                }
+                var pa = p.addresses.First();
+                peers.Add(new(pa.address, relay, pa.lastSeenTime, 0, 0, 0));
+            }
+
             if (IxianHandler.primaryWalletAddress.sectorPrefix.SequenceEqual(prefix))
             {
-                List<Peer> peers = new();
-                var relays = RelaySectors.Instance.getSectorNodes(prefix, Config.maxRelaySectorNodesToConnectTo + 1);
-                foreach (var relay in relays)
-                {
-                    var p = PresenceList.getPresenceByAddress(relay);
-                    if (p == null)
-                    {
-                        continue;
-                    }
-                    var pa = p.addresses.First();
-                    peers.Add(new(pa.address, relay, pa.lastSeenTime, 0, 0, 0));
-                }
                 Node.networkClientManagerStatic.setClientsToConnectTo(peers);
+            }
+
+            var friends = FriendList.getFriendsBySectorPrefix(prefix);
+            foreach (var friend in friends)
+            {
+                friend.updatedSectorNodes = Clock.getTimestamp();
+                friend.sectorNodes = peers;
+            }
+
+            friends = IXISocketConnections.GetPendingSectorRequestsBySectorPrefix(prefix);
+            foreach (var friend in friends)
+            {
+                friend.updatedSectorNodes = Clock.getTimestamp();
+                friend.sectorNodes = peers;
+                IXISocketConnections.RemovePendingSectorRequest(friend);
             }
 
             // Forward sector nodes to client
             var pendingRequest = getAndRemovePendingRequest(ProtocolMessageCode.getSectorNodes, prefix);
             if (pendingRequest != default)
             {
-                var relays = RelaySectors.Instance.getSectorNodes(prefix, nodeCount);
+                relays = RelaySectors.Instance.getSectorNodes(prefix, nodeCount);
                 foreach (var prEndpoint in pendingRequest.endpoints)
                 {
                     CoreProtocolMessage.sendSectorNodes(prefix, relays, prEndpoint);

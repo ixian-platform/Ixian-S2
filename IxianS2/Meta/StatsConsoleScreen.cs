@@ -2,9 +2,7 @@
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Utils;
-using System;
-using System.Linq;
-using System.Threading;
+using S2.Network;
 
 namespace S2.Meta
 {
@@ -12,7 +10,7 @@ namespace S2.Meta
     {
         private DateTime startTime;
 
-        private Thread thread = null;
+        private Thread thread;
         private bool running = false;
 
         private int consoleWidth = 55;
@@ -160,11 +158,11 @@ namespace S2.Meta
             writeLine("");
 
             float recvMB = 0;
-            if(CoreProtocolMessage.bytesForRelayReceived > 0)
-                recvMB = (CoreProtocolMessage.bytesForRelayReceived / 1024f) / 1024f;
+            if(StreamProcessor.bytesForRelayReceived > 0)
+                recvMB = (StreamProcessor.bytesForRelayReceived / 1024f) / 1024f;
             float sentMB = 0;
-            if (CoreProtocolMessage.bytesRelayed > 0)
-                sentMB = (CoreProtocolMessage.bytesRelayed / 1024f) / 1024f;
+            if (StreamProcessor.bytesRelayed > 0)
+                sentMB = (StreamProcessor.bytesRelayed / 1024f) / 1024f;
 
             writeLine(" S2 Data Received:     {0:F2} MB", recvMB);
             writeLine(" S2 Data Sent:         {0:F2} MB", sentMB);
