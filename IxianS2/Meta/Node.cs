@@ -454,12 +454,7 @@ namespace S2.Meta
                             // Request initial wallet balance
                             if (balance.blockHeight == 0 || balance.lastUpdate + 300 < Clock.getTimestamp())
                             {
-                                using (MemoryStream mw = new MemoryStream())
-                                using (BinaryWriter writer = new BinaryWriter(mw))
-                                {
-                                    writer.WriteIxiBytes(balance.address.addressNoChecksum);
-                                    NetworkClientManager.broadcastData(new char[] { 'M', 'H' }, ProtocolMessageCode.getBalance2, mw.ToArray(), null);
-                                }
+                                CoreProtocolMessage.broadcastProtocolMessage(['M', 'H'], ProtocolMessageCode.getBalance2, balance.address.addressNoChecksum.GetIxiBytes(), null);
 
                                 if (firstBalance)
                                 {

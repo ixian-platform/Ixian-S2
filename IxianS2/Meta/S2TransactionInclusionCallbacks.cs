@@ -16,12 +16,7 @@ namespace S2.Meta
             var bh = IxianHandler.getBlockHeader(tx.applied);
             Node.activityStorage.updateStatus(tx.id, ActivityStatus.Final, tx.applied, bh.timestamp);
 
-            using (MemoryStream mw = new MemoryStream())
-            using (BinaryWriter writer = new BinaryWriter(mw))
-            {
-                writer.WriteIxiBytes(tx.pubKey.addressNoChecksum);
-                CoreProtocolMessage.broadcastProtocolMessage(['M', 'H'], ProtocolMessageCode.getBalance2, mw.ToArray(), null);
-            }
+            CoreProtocolMessage.broadcastProtocolMessage(['M', 'H'], ProtocolMessageCode.getBalance2, tx.pubKey.addressNoChecksum.GetIxiBytes(), null);
         }
 
         public void transactionRejected(Transaction tx)
@@ -46,7 +41,8 @@ namespace S2.Meta
                 }
             }
 
-            if (blockHeader.blockNum + 10 >= IxianHandler.getHighestKnownNetworkBlockHeight())
+            if (blockHeader.blockNum + 10 >= IxianHandler.getHighestKnownNetworkBlockHeight()
+                && (IxianHandler.status == NodeStatus.warmUp || IxianHandler.status == NodeStatus.stalled))
             {
                 IxianHandler.status = NodeStatus.ready;
             }
