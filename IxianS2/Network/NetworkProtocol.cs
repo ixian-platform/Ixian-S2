@@ -1017,13 +1017,16 @@ namespace S2.Network
 
                         }
 
-                        string address = Node.networkClientManagerStatic.getMyAddress();
-                        if (address != null)
+                        if (!IxianHandler.forceIP)
                         {
-                            if (IxianHandler.publicIP != address)
+                            string address = Node.networkClientManagerStatic.getMyAddress();
+                            if (address != null)
                             {
-                                Logging.info("Setting public IP to " + address);
-                                IxianHandler.publicIP = address;
+                                if (IxianHandler.publicIP != address)
+                                {
+                                    Logging.info("Setting public IP to " + address);
+                                    IxianHandler.publicIP = address;
+                                }
                             }
                         }
 

@@ -314,7 +314,7 @@ namespace S2.Meta
             networkClientManagerStatic.start(0);
 
             // Start the s2 client manager
-            StreamClientManager.start(Config.maxConnectedStreamingNodes, false);
+            StreamClientManager.start(Config.maxConnectedStreamingNodes, false, false);
 
             // Start the keepalive thread
             PresenceList.startKeepAlive();
