@@ -219,6 +219,13 @@ namespace S2.Network
 
         public static void handleTransactionsChunk3(byte[] data, RemoteEndpoint endpoint)
         {
+            if (endpoint.presenceAddress.type != 'M'
+                        && endpoint.presenceAddress.type != 'H'
+                        && endpoint.presenceAddress.type != 'R')
+            {
+                Logging.warn("Received transactions chunk from non-master node {0}. Ignoring.", endpoint.getFullAddress());
+                return;
+            }
             using (MemoryStream m = new MemoryStream(data))
             {
                 using (BinaryReader reader = new BinaryReader(m))
@@ -283,6 +290,13 @@ namespace S2.Network
 
         static void handleBlockHeaders4(byte[] data, RemoteEndpoint endpoint)
         {
+            if (endpoint.presenceAddress.type != 'M'
+                && endpoint.presenceAddress.type != 'H'
+                && endpoint.presenceAddress.type != 'R')
+            {
+                Logging.warn("Received block headers from non-master node {0}. Ignoring.", endpoint.getFullAddress());
+                return;
+            }
             using (MemoryStream m = new MemoryStream(data))
             {
                 using (BinaryReader reader = new BinaryReader(m))
@@ -306,6 +320,11 @@ namespace S2.Network
                     }
                     else
                     {
+                        if (from > IxianHandler.getLastBlockHeight() + 1)
+                        {
+                            Logging.warn("Received block headers starting from {0}, but our last block height is {1}. Ignoring.", from, IxianHandler.getLastBlockHeight());
+                            return;
+                        }
                         byte[] headersBytes = new byte[reader.BaseStream.Length - reader.BaseStream.Position];
                         Buffer.BlockCopy(data, (int)reader.BaseStream.Position, headersBytes, 0, headersBytes.Length);
 
@@ -334,6 +353,14 @@ namespace S2.Network
 
         static void handlePITData(byte[] data, RemoteEndpoint endpoint)
         {
+            if (endpoint.presenceAddress.type != 'M'
+                && endpoint.presenceAddress.type != 'H'
+                && endpoint.presenceAddress.type != 'R')
+            {
+                Logging.warn("Received pit data from non-master node {0}. Ignoring.", endpoint.getFullAddress());
+                return;
+            }
+
             int offset = 0;
 
             var filterWithOffset = data.ReadIxiBytes(offset);
@@ -843,6 +870,14 @@ namespace S2.Network
 
         static void handleSectorNodes(byte[] data, RemoteEndpoint endpoint)
         {
+            if (endpoint.presenceAddress.type != 'M'
+                && endpoint.presenceAddress.type != 'H'
+                && endpoint.presenceAddress.type != 'R')
+            {
+                Logging.warn("Received balance2 from non-master node {0}. Ignoring.", endpoint.getFullAddress());
+                return;
+            }
+
             int offset = 0;
 
             var prefixAndOffset = data.ReadIxiBytes(offset);
@@ -979,6 +1014,14 @@ namespace S2.Network
                 using (BinaryReader reader = new BinaryReader(m))
                 {
                     CoreProtocolMessage.processHelloMessageV6(endpoint, reader);
+
+                    Friend friend = FriendList.getFriend(endpoint.presence.wallet);
+                    if (friend != null)
+                    {
+                        friend.updatedStreamingNodes = Clock.getNetworkTimestamp();
+                        friend.relayNode = new Peer(endpoint.getFullAddress(true), endpoint.presence.wallet, Clock.getTimestamp(), Clock.getTimestamp(), Clock.getTimestamp(), 0);
+                        friend.online = true;
+                    }
                 }
             }
         }
@@ -1084,6 +1127,12 @@ namespace S2.Network
 
         static void handleBalance2(byte[] data, RemoteEndpoint endpoint)
         {
+            if (endpoint.presenceAddress.type != 'M'
+                && endpoint.presenceAddress.type != 'H')
+            {
+                Logging.warn("Received balance2 from non-master node {0}. Ignoring.", endpoint.getFullAddress());
+                return;
+            }
             using (MemoryStream m = new MemoryStream(data))
             {
                 using (BinaryReader reader = new BinaryReader(m))
@@ -1098,7 +1147,7 @@ namespace S2.Network
                     // Retrieve the blockheight for the balance
                     ulong block_height = reader.ReadIxiVarUInt();
 
-                    foreach (Balance balance in IxianHandler.balances)
+                    foreach (Balance balance in IxianHandler.balances.Values)
                     {
                         if (address.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
                         {

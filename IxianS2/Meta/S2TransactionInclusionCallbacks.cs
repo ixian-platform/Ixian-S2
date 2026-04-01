@@ -3,6 +3,7 @@ using IXICore.Activity;
 using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
+using IXICore.Utils;
 
 namespace S2.Meta
 {
@@ -13,11 +14,16 @@ namespace S2.Meta
             var bh = IxianHandler.getBlockHeader(tx.applied);
             Node.activityStorage.updateStatus(tx.id, ActivityStatus.Final, tx.applied, bh.timestamp);
 
+            requestBalanceUpdate(tx);
+        }
+
+        private void requestBalanceUpdate(Transaction tx)
+        {
             if (IxianHandler.isMyAddress(tx.pubKey))
             {
                 foreach (var fromEntry in tx.fromList)
                 {
-                    IxianHandler.balances.FirstOrDefault(x => x.address != null && x.address.SequenceEqual(new Address(tx.pubKey.getInputBytes(), fromEntry.Key)))?.lastUpdate = 0;
+                    IxianHandler.balances.TryGet(new Address(tx.pubKey.getInputBytes(), fromEntry.Key))?.lastUpdate = 0;
                 }
             }
             else
@@ -26,7 +32,7 @@ namespace S2.Meta
                 {
                     if (IxianHandler.isMyAddress(toEntry.Key))
                     {
-                        IxianHandler.balances.FirstOrDefault(x => x.address != null && x.address.SequenceEqual(toEntry.Key))?.lastUpdate = 0;
+                        IxianHandler.balances.TryGet(toEntry.Key)?.lastUpdate = 0;
                     }
                 }
             }
@@ -35,18 +41,18 @@ namespace S2.Meta
         public void transactionRejected(Transaction tx)
         {
             tx.applied = 0;
-            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
+            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Rejected, 0);
         }
 
         public void transactionExpired(Transaction tx)
         {
             tx.applied = 0;
-            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Error, 0);
+            Node.activityStorage.updateStatus(tx.id, ActivityStatus.Expired, 0);
         }
 
         public void receivedBlockHeader(Block blockHeader, bool verified)
         {
-            foreach (Balance balance in IxianHandler.balances)
+            foreach (Balance balance in IxianHandler.balances.Values)
             {
                 if (balance.blockChecksum != null && balance.blockChecksum.SequenceEqual(blockHeader.blockChecksum))
                 {
@@ -54,11 +60,11 @@ namespace S2.Meta
                 }
             }
 
-            if (blockHeader.blockNum + 10 >= IxianHandler.getHighestKnownNetworkBlockHeight()
+            /*if (blockHeader.blockNum + 10 >= IxianHandler.getHighestKnownNetworkBlockHeight()
                 && (IxianHandler.status == NodeStatus.warmUp || IxianHandler.status == NodeStatus.stalled))
-            {
+            {*/
                 IxianHandler.status = NodeStatus.ready;
-            }
+            //}
 
             if (blockHeader.blockNum % CoreConfig.maxBlockHeadersPerDatabase == 0)
             {

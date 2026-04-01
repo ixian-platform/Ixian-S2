@@ -224,7 +224,7 @@ namespace S2.Meta
             List<Address> address_list = IxianHandler.getWalletStorage().getMyAddresses();
             foreach (Address addr in address_list)
             {
-                IxianHandler.balances.Add(new Balance(addr, 0));
+                IxianHandler.balances.Add(addr, new Balance(addr, 0));
             }
 
             return true;
@@ -449,7 +449,7 @@ namespace S2.Meta
 
                         // Request initial wallet balance
                         bool firstBalance = true;
-                        foreach (var balance in IxianHandler.balances)
+                        foreach (var balance in IxianHandler.balances.Values)
                         {
                             // Request initial wallet balance
                             if (balance.blockHeight == 0 || balance.lastUpdate + 300 < Clock.getTimestamp())
@@ -607,26 +607,6 @@ namespace S2.Meta
         public override Block? getLastBlock()
         {
             return tiv.getLastBlockHeader();
-        }
-
-        public override Wallet getWallet(Address id)
-        {
-            foreach (Balance balance in IxianHandler.balances)
-            {
-                if (id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
-                    return new Wallet(id, balance.balance);
-            }
-            return new Wallet(id, 0);
-        }
-
-        public override IxiNumber getWalletBalance(Address id)
-        {
-            foreach (Balance balance in IxianHandler.balances)
-            {
-                if (id.addressNoChecksum.SequenceEqual(balance.address.addressNoChecksum))
-                    return balance.balance;
-            }
-            return 0;
         }
 
         public override void shutdown()
