@@ -67,11 +67,6 @@ namespace S2.Network
         // Unified protocol message parsing
         public static void parseProtocolMessage(ProtocolMessageCode code, byte[] data, RemoteEndpoint endpoint)
         {
-            if (endpoint == null)
-            {
-                Logging.error("Endpoint was null. parseProtocolMessage");
-                return;
-            }
             try
             {
                 switch (code)
@@ -382,7 +377,7 @@ namespace S2.Network
             {
                 foreach (var prEndpoint in pendingRequest.endpoints)
                 {
-                    prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
+                    prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, 0, MessagePriority.high);
                 }
                 return;
             }
@@ -390,7 +385,7 @@ namespace S2.Network
             {
                 foreach (var prEndpoint in pendingRequest.endpoints)
                 {
-                    prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, null, 0, MessagePriority.high);
+                    prEndpoint.sendData(ProtocolMessageCode.pitData2, pitData, 0, MessagePriority.high);
                 }
                 return;
             }
@@ -530,7 +525,7 @@ namespace S2.Network
                     {
                         continue;
                     }
-                    client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true), null);
+                    client.sendData(ProtocolMessageCode.transactionData2, tx.getBytes(true, true));
                 }
             }
 
@@ -792,7 +787,7 @@ namespace S2.Network
             {
                 foreach (var prEndpoint in pendingRequest.endpoints)
                 {
-                    prEndpoint.sendData(ProtocolMessageCode.nameRecord, data, null, 0, MessagePriority.high);
+                    prEndpoint.sendData(ProtocolMessageCode.nameRecord, data, 0, MessagePriority.high);
                 }
             }
         }
@@ -1112,7 +1107,7 @@ namespace S2.Network
                             byte[][] presence_chunks = p.getByteChunks();
                             foreach (byte[] presence_chunk in presence_chunks)
                             {
-                                endpoint.sendData(ProtocolMessageCode.updatePresence, presence_chunk, null);
+                                endpoint.sendData(ProtocolMessageCode.updatePresence, presence_chunk);
                             }
                         }
                     }
@@ -1174,7 +1169,7 @@ namespace S2.Network
                     {
                         foreach (var prEndpoint in pendingRequest.endpoints)
                         {
-                            prEndpoint.sendData(ProtocolMessageCode.balance2, data, null, 0, MessagePriority.high);
+                            prEndpoint.sendData(ProtocolMessageCode.balance2, data, 0, MessagePriority.high);
                         }
                     }
                 }
@@ -1309,7 +1304,7 @@ namespace S2.Network
                 byte[][] presence_chunks = presence.getByteChunks();
                 foreach (byte[] presence_chunk in presence_chunks)
                 {
-                    endpoint.sendData(ProtocolMessageCode.updatePresence, presence_chunk, null);
+                    endpoint.sendData(ProtocolMessageCode.updatePresence, presence_chunk);
                 }
             }
         }

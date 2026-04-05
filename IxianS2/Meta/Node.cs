@@ -58,8 +58,7 @@ namespace S2.Meta
             // Load or Generate the wallet
             if (!initWallet())
             {
-                running = false;
-                IxianHandler.forceShutdown = true;
+                IxianHandler.shutdown();
                 return;
             }
 
@@ -71,10 +70,7 @@ namespace S2.Meta
             UpdateVerify.init(Config.checkVersionUrl, Config.checkVersionSeconds);
 
             // Initialize storage
-            if (storage is null)
-            {
-                storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers);
-            }
+            storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers);
 
             activityStorage = new ActivityStorage(Config.activityFolderPath, Config.activityDbCacheSize, 0, RocksDBOptimizations.Servers);
 
@@ -98,6 +94,8 @@ namespace S2.Meta
             NetworkClientManager.init(networkClientManagerRandomized);
 
             networkClientManagerStatic = new NetworkClientManagerStatic(Config.maxRelaySectorNodesToConnectTo, false);
+            
+            StreamClientManager.init(Config.maxConnectedStreamingNodes, false);
 
             RelaySectors.init(CoreConfig.relaySectorLevels, null);
 
@@ -130,7 +128,7 @@ namespace S2.Meta
                 {
                     Logging.flush();
                     password = ConsoleHelpers.requestNewPassword("Enter a password for your new wallet: ");
-                    if (IxianHandler.forceShutdown)
+                    if (password == "" || IxianHandler.forceShutdown)
                     {
                         return false;
                     }
@@ -230,11 +228,12 @@ namespace S2.Meta
             return true;
         }
 
-        public void start(bool verboseConsoleOutput)
+        public bool start(bool verboseConsoleOutput)
         {
             if (running)
             {
-                return;
+                Logging.warn("Cannot start Node, it is already running.");
+                return false;
             }
             Logging.info("Starting node");
 
@@ -258,8 +257,7 @@ namespace S2.Meta
             if (!storage.prepareStorage(false))
             {
                 Logging.error("Error while preparing block storage! Aborting.");
-                IxianHandler.forceShutdown = true;
-                return;
+                return false;
             }
 
             activityStorage.prepareStorage(true);
@@ -299,55 +297,54 @@ namespace S2.Meta
                 statsConsoleScreen.clearScreen();
             }
 
-            // Check for test client mode
-            if (Config.isTestClient)
-            {
-                TestClientNode.start();
-                return;
-            }
-
-            // Start the node stream server
-            NetworkServer.beginNetworkOperations();
-
-            // Start the network client manager
-            NetworkClientManager.start(1);
-            networkClientManagerStatic.start(0);
-
-            // Start the s2 client manager
-            StreamClientManager.start(Config.maxConnectedStreamingNodes, false, false);
-
             // Start the keepalive thread
             PresenceList.startKeepAlive();
 
             // Start TIV
             tiv.start(0, null, false);
 
+            // Start the node stream server
+            NetworkServer.beginNetworkOperations();
+
+            // Start the s2 client manager
+            StreamClientManager.start();
+
+            // Start the network client manager
+            networkClientManagerStatic.start(0);
+            NetworkClientManager.start(1);
+
             // Start the maintenance thread
             mainLoopThread = new Thread(mainLoop);
             mainLoopThread.Name = "Main_Loop_Thread";
             mainLoopThread.Start();
+
+            return true;
         }
 
-        static public void stop()
+        private void stop()
         {
             if (!running)
             {
-                Logging.stop();
-                IxianHandler.status = NodeStatus.stopped;
                 return;
             }
 
             Logging.info("Stopping node...");
             running = false;
 
-            IxianHandler.forceShutdown = true;
+            // First stop localStorage, to flush any pending chat messages to storage
+            // The Node is currently in shutting down state, so no incoming messages will be processed by the message processors
+            IxianHandler.localStorage.stop();
 
-            UpdateVerify.stop();
-
-            // Stop the stream processor
+            // Stop the stream processor, it includes pending messages
             streamProcessor.stop();
 
-            IxianHandler.localStorage.stop();
+            // Stop everything else storage related
+            activityStorage.stopStorage();
+
+            PeerStorage.savePeersFile(true);
+
+            // Stop the block storage
+            storage.stopStorage();
 
             // Stop TIV
             tiv.stop();
@@ -362,26 +359,8 @@ namespace S2.Meta
                 apiServer = null;
             }
 
-            if (mainLoopThread != null)
-            {
-                mainLoopThread.Interrupt();
-                mainLoopThread.Join();
-                mainLoopThread = null;
-            }
-
-            activityStorage.stopStorage();
-
-            // Stop the network queue
+            // Stop everything network related
             NetworkQueue.stop();
-
-            // Check for test client mode
-            if (Config.isTestClient)
-            {
-                TestClientNode.stop();
-                return;
-            }
-
-            // Stop all network clients
             networkClientManagerStatic.stop();
             NetworkClientManager.stop();
             StreamClientManager.stop();
@@ -389,10 +368,14 @@ namespace S2.Meta
             // Stop the network server
             NetworkServer.stopNetworkOperations();
 
-            // Stop the block storage
-            storage.stopStorage();
+            UpdateVerify.stop();
 
-            IxianHandler.status = NodeStatus.stopped;
+            if (mainLoopThread != null)
+            {
+                mainLoopThread.Interrupt();
+                mainLoopThread.Join();
+                mainLoopThread = null;
+            }
 
             Logging.info("Node stopped");
 
@@ -540,18 +523,6 @@ namespace S2.Meta
             return block.blockNum;
         }
 
-        public override ulong getHighestKnownNetworkBlockHeight()
-        {
-            ulong bh = getLastBlockHeight();
-            ulong netBlockNum = CoreProtocolMessage.determineHighestNetworkBlockNum();
-            if (bh < netBlockNum)
-            {
-                bh = netBlockNum;
-            }
-
-            return bh;
-        }
-
         public override int getLastBlockVersion()
         {
             Block? block = tiv.getLastBlockHeader();
@@ -611,7 +582,7 @@ namespace S2.Meta
 
         public override void shutdown()
         {
-            IxianHandler.forceShutdown = true;
+            stop();
         }
 
         public override void parseProtocolMessage(ProtocolMessageCode code, byte[] data, RemoteEndpoint endpoint)

@@ -58,9 +58,6 @@ namespace S2.Meta
         public static readonly int infoMessageQuota = 10;  // Allow 10 info messages per 1 data message
         public static readonly int dataMessageQuota = 3; // Allow up to 3 data messages before receiving a transaction signature
 
-
-        public static bool isTestClient = false;
-
         // Debugging values
         public static string networkDumpFile = "";
 
@@ -417,8 +414,6 @@ namespace S2.Meta
             cmd_parser.Setup<bool>("generateWallet").Callback(value => generateWalletOnly = value).SetDefault(false);
 
             cmd_parser.Setup<string>("walletPassword").Callback(value => dangerCommandlinePasswordCleartextUnsafe = value).SetDefault("");
-
-            cmd_parser.Setup<bool>("testClient").Callback(value => isTestClient = true).Required();
 
             cmd_parser.Setup<int>("logVerbosity").Callback(value => logVerbosity = value).Required();
 

@@ -37,7 +37,6 @@ namespace S2
             // Start logging
             if (!Logging.start(Config.logFolderPath, Config.logVerbosity))
             {
-                IxianHandler.forceShutdown = true;
                 Logging.info("Press ENTER to exit.");
                 Console.ReadLine();
                 return;
@@ -47,7 +46,7 @@ namespace S2
                 ConsoleHelpers.verboseConsoleOutput = true;
                 Logging.consoleOutput = ConsoleHelpers.verboseConsoleOutput;
                 e.Cancel = true;
-                IxianHandler.forceShutdown = true;
+                IxianHandler.shutdown();
             };
 
             if (onStart(args))
@@ -83,7 +82,11 @@ namespace S2
             }
 
             // Start the actual S2 node
-            node.start(Config.verboseOutput);
+            if (!node.start(Config.verboseOutput))
+            {
+                Thread.Sleep(1000);
+                return false;
+            }
 
             if (ConsoleHelpers.verboseConsoleOutput)
                 Console.WriteLine("-----------\nPress Ctrl-C or use the /shutdown API to stop the S2 process at any time.\n");
@@ -112,7 +115,7 @@ namespace S2
                         {
                             ConsoleHelpers.verboseConsoleOutput = true;
                             Logging.consoleOutput = ConsoleHelpers.verboseConsoleOutput;
-                            IxianHandler.forceShutdown = true;
+                            IxianHandler.shutdown();
                         }
 
                     }
@@ -128,7 +131,7 @@ namespace S2
         static void onStop()
         {
             // Stop the S2 node
-            Node.stop();
+            IxianHandler.shutdown();
 
             // Stop logging
             Logging.stop();

@@ -20,11 +20,6 @@ namespace S2
         {
             JsonResponse response = null;
 
-            if (methodName.Equals("testadd", StringComparison.OrdinalIgnoreCase))
-            {
-                response = onTestAdd(parameters);
-            }
-
             if (methodName.Equals("status", StringComparison.OrdinalIgnoreCase))
             {
                 response = onStatus(parameters);
@@ -59,26 +54,6 @@ namespace S2
             status.Add("Network Servers Static", Node.networkClientManagerStatic.getConnectedClients(true));
 
             return new JsonResponse { result = status, error = null };
-        }
-
-        public JsonResponse onTestAdd(Dictionary<string, object> parameters)
-        {
-            if (!parameters.ContainsKey("wallet"))
-            {
-                JsonError error = new JsonError { code = (int)RPCErrorCode.RPC_INVALID_PARAMETER, message = "Parameter 'wallet' is missing" };
-                return new JsonResponse { result = null, error = error };
-            }
-
-            Address wallet = new Address((string)parameters["wallet"]);
-
-            string responseString = JsonConvert.SerializeObject("Friend added successfully");
-
-            if (TestClientNode.addFriend(wallet) == false)
-            {
-                responseString = JsonConvert.SerializeObject("Could not find wallet id or add friend");
-            }
-
-            return new JsonResponse() { result = responseString, error = null };
         }
     }
 }
