@@ -70,9 +70,9 @@ namespace S2.Meta
             UpdateVerify.init(Config.checkVersionUrl, Config.checkVersionSeconds);
 
             // Initialize storage
-            storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers);
+            storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers, Config.minRequiredDiskSpace);
 
-            activityStorage = new ActivityStorage(Config.activityFolderPath, Config.activityDbCacheSize, 0, RocksDBOptimizations.Servers);
+            activityStorage = new ActivityStorage(Config.activityFolderPath, Config.activityDbCacheSize, 0, RocksDBOptimizations.Servers, Config.minRequiredDiskSpace);
 
             PeerStorage.init(Config.dataFolder);
 
@@ -389,7 +389,7 @@ namespace S2.Meta
         {
             if (activityStorage is null)
             {
-                activityStorage = new ActivityStorage(Config.activityFolderPath, Config.activityDbCacheSize, 0, RocksDBOptimizations.Servers);
+                activityStorage = new ActivityStorage(Config.activityFolderPath, Config.activityDbCacheSize, 0, RocksDBOptimizations.Servers, Config.minRequiredDiskSpace);
             }
             activityStorage.stopStorage();
             activityStorage.deleteData();
@@ -397,7 +397,7 @@ namespace S2.Meta
 
             if (storage is null)
             {
-                storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers);
+                storage = new RocksDBStorage(Config.headersFolderPath, Config.blocksDbCacheSize, CoreConfig.maxBlockHeadersPerDatabase, 50, RocksDBOptimizations.Servers, Config.minRequiredDiskSpace);
             }
             storage.stopStorage();
             storage.deleteData();

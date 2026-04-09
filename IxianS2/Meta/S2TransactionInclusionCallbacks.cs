@@ -4,6 +4,7 @@ using IXICore.Inventory;
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Utils;
+using System;
 
 namespace S2.Meta
 {

@@ -2,6 +2,9 @@
 using IXICore.Meta;
 using IXICore.Network;
 using IXICore.Streaming;
+using System;
+using System.Collections.Generic;
+using System.IO;
 
 namespace S2.Network
 {

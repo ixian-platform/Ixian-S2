@@ -1,6 +1,10 @@
 ﻿using Fclp;
 using IXICore.Meta;
 using IXICore.Network;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace S2.Meta
@@ -88,6 +92,7 @@ namespace S2.Meta
         public static ulong activityDbCacheSize = 128 << 20;
         public static ulong blocksDbCacheSize = 512 << 20;
 
+        public static long minRequiredDiskSpace = 1 << 30; // 1GB
         private Config()
         {
 

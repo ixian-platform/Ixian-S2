@@ -4,7 +4,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>S2</RootNamespace>
 	<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-	<ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   

@@ -8,6 +8,10 @@ using IXICore.RegNames;
 using IXICore.Streaming;
 using IXICore.Utils;
 using S2.Meta;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Numerics;
 using static IXICore.Transaction;
 
