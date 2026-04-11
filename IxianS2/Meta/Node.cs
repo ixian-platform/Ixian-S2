@@ -58,7 +58,7 @@ namespace S2.Meta
             // Load or Generate the wallet
             if (!initWallet())
             {
-                IxianHandler.shutdown();
+                IxianHandler.requestShutdown();
                 return;
             }
 
@@ -382,6 +382,9 @@ namespace S2.Meta
             // Stop the console stats screen
             // Console screen has a thread running even if we are in verbose mode
             statsConsoleScreen.stop();
+
+            // Stop logging
+            Logging.stop();
         }
 
         // Cleans the storage cache and logs
