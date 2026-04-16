@@ -553,10 +553,10 @@ namespace S2.Meta
 
         public override bool addTransaction(Transaction tx, List<Address> relayNodeAddresses, List<ExtendedAddress>? extendedAddresses, byte[]? requestId, bool force_broadcast)
         {
-            return addTransaction(null, tx, relayNodeAddresses, extendedAddresses, requestId, force_broadcast);
+            return addTransaction(null, tx, extendedAddresses, requestId, force_broadcast);
         }
 
-        public static bool addTransaction(Address? senderAddress, Transaction tx, List<Address> relayNodeAddresses, List<ExtendedAddress>? extendedAddresses, byte[]? requestId, bool force_broadcast)
+        public static bool addTransaction(Address? senderAddress, Transaction tx, List<ExtendedAddress>? extendedAddresses, byte[]? requestId, bool force_broadcast)
         {
             if (tx.timeStamp == 0)
             {
