@@ -148,10 +148,6 @@ namespace S2.Network
                         handleInventory2(data, endpoint);
                         break;
 
-                    //case ProtocolMessageCode.getStreamingNode:
-                    //    handleGetStreamingNode(data, endpoint);
-                    //    break;
-
                     case ProtocolMessageCode.getSectorNodes:
                         handleGetSectorNodes(data, endpoint);
                         break;
@@ -486,12 +482,12 @@ namespace S2.Network
             {
                 // TODO if transaction already processed, send proofs back to the client
 
-                ToEntry value;
+                ToEntry? value;
                 if (tx.toList.TryGetValue(IxianHandler.primaryWalletAddress, out value)
                     /*&& value.amount >= tx.fee / 10*/)
                 {
                     // Check if transaction already processed
-                    if (!Node.addTransaction(endpoint.serverWalletAddress, tx, null, null, null, true))
+                    if (!Node.addTransaction(endpoint.serverWalletAddress, tx, null, null, true))
                     {
                         endpoint.sendData(ProtocolMessageCode.rejected, new Rejected(RejectedCode.TransactionDuplicate, tx.id).getBytes());
                         return;
@@ -595,14 +591,14 @@ namespace S2.Network
         private static void handleUpdatePresence(byte[] data, RemoteEndpoint endpoint)
         {
             // Parse the data and update entries in the presence list
-            Presence updatedPresence = PresenceList.updateFromBytes(data, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight(), IxianHandler.getLastBlockVersion(), 0));
+            Presence? updatedPresence = PresenceList.updateFromBytes(data, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight(), IxianHandler.getLastBlockVersion(), 0));
             if (updatedPresence == null)
             {
                 return;
             }
 
             Logging.trace("Received presence update for " + updatedPresence.wallet);
-            Friend f = FriendList.getFriend(updatedPresence.wallet);
+            Friend? f = FriendList.getFriend(updatedPresence.wallet);
             if (f != null)
             {
                 if (f.publicKey == null)
@@ -622,8 +618,7 @@ namespace S2.Network
             // If a presence entry was updated, broadcast this message again
             foreach (var pa in updatedPresence.addresses)
             {
-                byte[] hash = CryptoManager.lib.sha3_512sqTrunc(pa.getBytes());
-                var iika = new InventoryItemKeepAlive(hash, pa.lastSeenTime, updatedPresence.wallet, pa.device);
+                var iika = new InventoryItemKeepAlive2(pa.lastSeenTime, updatedPresence.wallet, pa.device);
 
                 if (pa.type == 'R')
                 {
@@ -639,7 +634,7 @@ namespace S2.Network
             }
         }
 
-        private static void sendKeepAlivePresenceToNeighbourSectorNodes(InventoryItemKeepAlive iika, RemoteEndpoint endpoint)
+        private static void sendKeepAlivePresenceToNeighbourSectorNodes(InventoryItemKeepAlive2 iika, RemoteEndpoint endpoint)
         {
             var sectorNodes = RelaySectors.Instance.getSectorNodes(IxianHandler.primaryWalletAddress.sectorPrefix, Config.maxRelaySectorNodesToConnectTo);
             var thisNodeIndex = sectorNodes.FindIndex(x => x.addressNoChecksum.SequenceEqual(iika.address.addressNoChecksum));
@@ -673,7 +668,7 @@ namespace S2.Network
                     continue;
                 }
 
-                RemoteEndpoint client = Node.networkClientManagerStatic.getClient(sectorNodes[i]);
+                RemoteEndpoint? client = Node.networkClientManagerStatic.getClient(sectorNodes[i]);
                 if (client != null)
                 {
                     client.addInventoryItem(iika);
@@ -691,26 +686,25 @@ namespace S2.Network
 
         private static void handleKeepAlivePresence(byte[] data, RemoteEndpoint endpoint)
         {
-            byte[] hash = CryptoManager.lib.sha3_512sqTrunc(data);
-
-            InventoryCache.Instance.setProcessedFlag(InventoryItemTypes.keepAlive, hash);
-
-            Address address = null;
+            Address address;
             long last_seen = 0;
-            byte[] device_id = null;
+            byte[] device_id;
             char node_type;
             bool updated = PresenceList.receiveKeepAlive(data, out address, out last_seen, out device_id, out node_type, endpoint);
+            
+            InventoryCache.Instance.setProcessedFlag(InventoryItemTypes.keepAlive2, InventoryItemKeepAlive2.getHash(last_seen, address, device_id)); 
+            
             if (!updated)
             {
                 return;
             }
 
             Logging.trace("Received keepalive update for " + address);
-            Presence p = PresenceList.getPresenceByAddress(address);
+            Presence? p = PresenceList.getPresenceByAddress(address);
             if (p == null)
                 return;
 
-            Friend f = FriendList.getFriend(p.wallet);
+            Friend? f = FriendList.getFriend(p.wallet);
             if (f != null)
             {
                 var pa = p.addresses[0];
@@ -723,7 +717,7 @@ namespace S2.Network
                 }
             }
 
-            var iika = new InventoryItemKeepAlive(hash, last_seen, address, device_id);
+            var iika = new InventoryItemKeepAlive2(last_seen, address, device_id);
             if (node_type == 'R')
             {
                 Node.networkClientManagerStatic.addToInventory(['R'], iika, endpoint);
@@ -892,7 +886,7 @@ namespace S2.Network
                 var kaBytesAndOffset = data.ReadIxiBytes(offset);
                 offset += kaBytesAndOffset.bytesRead;
 
-                Presence p = PresenceList.updateFromBytes(kaBytesAndOffset.bytes, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight(), IxianHandler.getLastBlockVersion(), 0));
+                Presence? p = PresenceList.updateFromBytes(kaBytesAndOffset.bytes, IxianHandler.getMinSignerPowDifficulty(IxianHandler.getLastBlockHeight(), IxianHandler.getLastBlockVersion(), 0));
                 if (p != null)
                 {
                     RelaySectors.Instance.addRelayNode(p.wallet);
@@ -1014,7 +1008,7 @@ namespace S2.Network
                 {
                     CoreProtocolMessage.processHelloMessageV6(endpoint, reader);
 
-                    Friend friend = FriendList.getFriend(endpoint.presence.wallet);
+                    Friend? friend = FriendList.getFriend(endpoint.presence.wallet);
                     if (friend != null)
                     {
                         friend.updatedStreamingNodes = Clock.getNetworkTimestamp();
@@ -1061,7 +1055,7 @@ namespace S2.Network
 
                         if (!IxianHandler.forceIP)
                         {
-                            string address = Node.networkClientManagerStatic.getMyAddress();
+                            string? address = Node.networkClientManagerStatic.getMyAddress();
                             if (address != null)
                             {
                                 if (IxianHandler.publicIP != address)
@@ -1103,7 +1097,7 @@ namespace S2.Network
                 {
                     int walletLen = (int)reader.ReadIxiVarUInt();
                     Address wallet = new Address(reader.ReadBytes(walletLen));
-                    Presence p = PresenceList.getPresenceByAddress(wallet);
+                    Presence? p = PresenceList.getPresenceByAddress(wallet);
                     if (p != null)
                     {
                         lock (p)
@@ -1190,7 +1184,6 @@ namespace S2.Network
                     if (item_count > (ulong)CoreConfig.maxInventoryItems)
                     {
                         Logging.warn("Received {0} inventory items, max items is {1}", item_count, CoreConfig.maxInventoryItems);
-                        item_count = (ulong)CoreConfig.maxInventoryItems;
                     }
 
                     ulong last_accepted_block_height = IxianHandler.getLastBlockHeight();
@@ -1198,12 +1191,12 @@ namespace S2.Network
                     ulong network_block_height = IxianHandler.getHighestKnownNetworkBlockHeight();
 
                     Dictionary<ulong, List<InventoryItemSignature>> sig_lists = new Dictionary<ulong, List<InventoryItemSignature>>();
-                    List<InventoryItemKeepAlive> ka_list = new List<InventoryItemKeepAlive>();
+                    List<InventoryItemKeepAlive2> ka_list = new List<InventoryItemKeepAlive2>();
                     for (ulong i = 0; i < item_count; i++)
                     {
                         ulong len = reader.ReadIxiVarUInt();
                         byte[] item_bytes = reader.ReadBytes((int)len);
-                        InventoryItem item = InventoryCache.decodeInventoryItem(item_bytes);
+                        InventoryItem? item = InventoryCache.decodeInventoryItem(item_bytes);
 
                         if (item == null)
                         {
@@ -1227,7 +1220,12 @@ namespace S2.Network
                                 break;
                         }
 
-                        PendingInventoryItem pii = InventoryCache.Instance.add(item, endpoint, false);
+                        PendingInventoryItem? pii = InventoryCache.Instance.add(item, endpoint, false);
+                        if (pii == null)
+                        {
+                            Logging.warn("Error adding inventory item {0} to cache. Endpoint: {1}", item.type, endpoint.getFullAddress());
+                            continue;
+                        }
 
                         if (!pii.processed && pii.lastRequested == 0)
                         {
@@ -1235,17 +1233,33 @@ namespace S2.Network
                             switch (item.type)
                             {
                                 case InventoryItemTypes.keepAlive:
-                                    var iika = (InventoryItemKeepAlive)item;
-                                    if (PresenceList.getPresenceByAddress(iika.address) != null)
                                     {
-                                        ka_list.Add(iika);
-                                        pii.lastRequested = Clock.getTimestamp();
+                                        var iika = (InventoryItemKeepAlive)item;
+                                        if (PresenceList.getPresenceByAddress(iika.address) != null)
+                                        {
+                                            ka_list.Add(new InventoryItemKeepAlive2(iika.lastSeen, iika.address, iika.deviceId));
+                                        }
+                                        else
+                                        {
+                                            CoreProtocolMessage.broadcastGetPresence(iika.address.addressNoChecksum, endpoint);
+                                        }
+                                        break;
                                     }
-                                    else
+
+                                case InventoryItemTypes.keepAlive2:
                                     {
-                                        InventoryCache.Instance.processInventoryItem(pii);
+                                        var iika = (InventoryItemKeepAlive2)item;
+                                        if (PresenceList.getPresenceByAddress(iika.address) != null)
+                                        {
+                                            ka_list.Add(iika);
+                                            pii.lastRequested = Clock.getTimestamp();
+                                        }
+                                        else
+                                        {
+                                            InventoryCache.Instance.processInventoryItem(pii);
+                                        }
+                                        break;
                                     }
-                                    break;
 
                                 case InventoryItemTypes.block:
                                     var iib = ((InventoryItemBlock)item);

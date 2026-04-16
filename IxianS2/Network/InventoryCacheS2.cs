@@ -16,6 +16,7 @@ namespace IXICore.Inventory
         public InventoryCacheS2(TransactionInclusion tiv) : base(tiv)
         {
             typeOptions[InventoryItemTypes.keepAlive].maxItems = 1000000;
+            typeOptions[InventoryItemTypes.keepAlive2].maxItems = 1000000;
         }
     }
 }
