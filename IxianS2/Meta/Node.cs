@@ -11,8 +11,6 @@ using S2.Network;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Threading;
 
 namespace S2.Meta
@@ -37,6 +35,8 @@ namespace S2.Meta
         private static APIServer? apiServer = null;
 
         private static Thread? mainLoopThread = null;
+
+        private static STUN? stun = null;
 
         private static bool running = false;
 
@@ -63,7 +63,7 @@ namespace S2.Meta
             }
 
             // Network configuration
-            NetworkUtils.configureNetwork(Config.externalIp, Config.serverPort);
+            NetworkUtils.configureNetwork(Config.externalIp, Config.serverPort, 3478);
 
             FriendList.init(Config.dataFolder, false);
 
@@ -98,6 +98,8 @@ namespace S2.Meta
             StreamClientManager.init(Config.maxConnectedStreamingNodes, false);
 
             RelaySectors.init(CoreConfig.relaySectorLevels, null);
+
+            stun = new STUN();
 
             // Setup the stats console
             statsConsoleScreen = new StatsConsoleScreen();
@@ -313,6 +315,8 @@ namespace S2.Meta
             networkClientManagerStatic.start(0);
             NetworkClientManager.start(1);
 
+            stun?.StartServer().Wait();
+
             // Start the maintenance thread
             mainLoopThread = new Thread(mainLoop);
             mainLoopThread.Name = "Main_Loop_Thread";
@@ -369,6 +373,8 @@ namespace S2.Meta
             NetworkServer.stopNetworkOperations();
 
             UpdateVerify.stop();
+
+            stun?.StopServer().Wait();
 
             if (mainLoopThread != null)
             {
