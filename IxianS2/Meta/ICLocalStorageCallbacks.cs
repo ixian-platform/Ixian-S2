@@ -5,7 +5,7 @@ namespace S2.Meta
 {
     internal class ICLocalStorageCallbacks : LocalStorageCallbacks
     {
-        public void processMessage(FriendMessage friendMessage)
+        public void processMessage(Friend friend, int channel, FriendMessage friendMessage)
         {
         }
     }
