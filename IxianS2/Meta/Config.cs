@@ -50,7 +50,7 @@ namespace S2.Meta
         public static string externalIp = "";
 
         // Read-only values
-        public static readonly string version = "xs2c-0.9.5c"; // S2 Node version
+        public static readonly string version = "xs2c-0.9.5d"; // S2 Node version
 
         public static readonly string checkVersionUrl = "https://resources.ixian.io/s2-update.txt";
         public static readonly int checkVersionSeconds = 6 * 60 * 60; // 6 hours
@@ -425,7 +425,7 @@ namespace S2.Meta
 
             cmd_parser.Setup<bool>("generateWallet").Callback(value => generateWalletOnly = value).SetDefault(false);
 
-            cmd_parser.Setup<string>("walletPassword").Callback(value => dangerCommandlinePasswordCleartextUnsafe = value).SetDefault("");
+            cmd_parser.Setup<string>("walletPassword").Callback(value => dangerCommandlinePasswordCleartextUnsafe = value).Required();
 
             cmd_parser.Setup<int>("logVerbosity").Callback(value => logVerbosity = value).Required();
 
